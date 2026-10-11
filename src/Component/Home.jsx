@@ -35,12 +35,12 @@ const Home = () => {
         <Footer />
       </div>
 
-      {/* شاشة البداية العائمة فوق الموقع بخلفية شفافة (تغيم بسيط) واللوجو أصغر حجماً */}
+      {/* شاشة البداية العائمة مع إجبار المتصفح على تحديث اللوجو من مجلد public */}
       {isLoading && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1a1a2e]/80 backdrop-blur-sm transition-opacity duration-700">
           <div className="flex flex-col items-center justify-center p-4">
             <img 
-              src="/transparent BG.svg" 
+              src="/transparent BG.svg?v=2" 
               alt="Manara Logo" 
               className="w-48 sm:w-60 md:w-72 h-auto animate-pulse drop-shadow-[0_0_25px_rgba(243,115,33,0.5)] object-contain" 
             />
