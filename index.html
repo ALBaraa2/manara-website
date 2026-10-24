@@ -5,10 +5,12 @@
     <link rel="icon" type="image/svg+xml" href="/transparent BG.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>منارة</title>
+    <!-- لون السماء قبل تحميل الـ JS حتى لا يظهر وميض أبيض -->
+    <style>html, body { background: #0c0820; }</style>
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Almarai:wght@300;400;700;800&display=swap" rel="stylesheet">
+    <!-- الخط محلي ويُحمَّل مبكراً حتى لا يتبدّل شكل النص بعد الظهور -->
+    <link rel="preload" href="/Fonts/DINNextLTArabic-Regular-4.ttf" as="font" type="font/ttf" crossorigin>
+    <link rel="preload" href="/Fonts/DINNextLTArabic-Medium-4.ttf" as="font" type="font/ttf" crossorigin>
   </head>
   <body>
     <div id="root"></div>

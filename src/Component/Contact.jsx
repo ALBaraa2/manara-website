@@ -1,245 +1,265 @@
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useContext, useEffect, useId, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { FiAlertCircle, FiCheck, FiCopy, FiMail, FiMapPin, FiPhone, FiRefreshCw, FiSend } from 'react-icons/fi';
+import { FaFacebookF, FaInstagram, FaLinkedinIn } from 'react-icons/fa6';
 import { LanguageContext } from '../LanguageContext';
-import { FiMapPin, FiMail, FiPhone } from 'react-icons/fi';
-import { FaLinkedinIn, FaXTwitter, FaFacebookF, FaInstagram } from 'react-icons/fa6';
-import { motion } from 'framer-motion';
+import { Kicker } from './brand';
+import { EASE, reveal } from '../lib/brand';
+import { CONTACT_INTENT_EVENT } from '../lib/contactIntent';
+
+// النموذج يرسل إلى بريد الفريق عبر formsubmit (نفس الخدمة السابقة، بلا خادم خاص)؛ الحقول: name, email, message،
+// و _subject بحسب الموضوع، و _honey حقل مخفي لصدّ الرسائل الآلية.
+// الأزرار في بقية الصفحة (الحكاية، الخدمات، الورش) تحدد الموضوع عبر CONTACT_INTENT_EVENT.
+const ENDPOINT = 'https://formsubmit.co/ajax/manara.gaza.pal@gmail.com';
+
+const TOPICS = {
+  general: { AR: ['استفسار عام', ''], EN: ['General question', ''] },
+  workshop: { AR: ['الورش والدورات', 'أودّ معرفة المزيد عن ورش منارة ودوراتها القادمة.'], EN: ['Workshops & courses', 'I would like to know more about upcoming Manara workshops and courses.'] },
+  volunteer: { AR: ['التطوّع', 'أرغب في التطوّع مع منارة. مجال خبرتي: '], EN: ['Volunteering', 'I would like to volunteer with Manara. My area of expertise: '] },
+  partner: { AR: ['شراكة', 'أمثّل جهة ترغب في بناء شراكة مع منارة: '], EN: ['Partnership', 'I represent an organisation interested in partnering with Manara: '] },
+  support: { AR: ['دعم منارة', 'أرغب في دعم منارة، وأودّ معرفة الاحتياجات الحالية وطرق الدعم المتاحة.'], EN: ['Supporting Manara', 'I would like to support Manara and learn about your current needs and the ways to help.'] },
+};
+const CHIPS = ['general', 'workshop', 'volunteer', 'partner', 'support'];
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+function validate(values, isAr) {
+  const errors = {};
+  if (values.name.trim().length < 2) errors.name = isAr ? 'اكتب اسمك (حرفان على الأقل).' : 'Enter your name (at least 2 characters).';
+  if (!EMAIL.test(values.email.trim())) errors.email = isAr ? 'اكتب بريداً إلكترونياً صحيحاً، مثل name@example.com.' : 'Enter a valid email, e.g. name@example.com.';
+  if (values.message.trim().length < 10) errors.message = isAr ? 'اكتب رسالتك (10 أحرف على الأقل).' : 'Write your message (at least 10 characters).';
+  return errors;
+}
+
+function Channel({ icon: Icon, label, value, href, copy, isAr, ltr }) {
+  const [copied, setCopied] = useState(false);
+  const doCopy = async () => {
+    try { await navigator.clipboard.writeText(copy); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* الحافظة غير متاحة؛ يبقى الرابط */ }
+  };
+  return (
+    <li className="contact-channel">
+      <span className="contact-channel-icon" aria-hidden="true"><Icon /></span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-xs text-brand-gray">{label}</span>
+        {href
+          ? <a href={href} className="contact-channel-value" dir={ltr ? 'ltr' : undefined}>{value}</a>
+          : <span className="contact-channel-value">{value}</span>}
+      </span>
+      {copy && (
+        <button type="button" onClick={doCopy} className="contact-copy" aria-label={`${isAr ? 'نسخ' : 'Copy'} ${label}`}>
+          {copied ? <FiCheck aria-hidden="true" /> : <FiCopy aria-hidden="true" />}
+          <span className="sr-only" aria-live="polite">{copied ? (isAr ? 'تم النسخ' : 'Copied') : ''}</span>
+        </button>
+      )}
+    </li>
+  );
+}
 
 function Contact() {
   const { lang, t } = useContext(LanguageContext);
   const isAr = lang === 'AR';
+  const uid = useId().replace(/:/g, '');
 
-  const [submitting, setSubmitting] = useState(false);
-  const [successMessage, setSuccessMessage] = useState(false);
-  const [errorMessage, setErrorMessage] = useState(false);
+  const [values, setValues] = useState({ name: '', email: '', message: '' });
+  const [touched, setTouched] = useState({});
+  const [state, setState] = useState('idle'); // idle | sending | sent | failed
+  const [topic, setTopic] = useState(null);
+  const [serviceLabel, setServiceLabel] = useState('');
+  const prefilled = useRef('');
+  const refs = { name: useRef(null), email: useRef(null), message: useRef(null) };
+  const sending = useRef(false);
+
+  const errors = validate(values, isAr);
+  const showError = (field) => touched[field] && errors[field];
+
+  const topicLabel = topic === 'service' ? serviceLabel : topic ? TOPICS[topic][lang][0] : '';
+  const prefillFor = (key, label) => {
+    if (key === 'service') return isAr ? `أرغب في معرفة المزيد عن خدمة: ${label}.` : `I would like to know more about the “${label}” service.`;
+    return TOPICS[key]?.[lang][1] || '';
+  };
+
+  // تغيير الموضوع: لا نمسح ما كتبه الزائر؛ نملأ النص المقترح فقط إن كان الحقل فارغاً أو ما زال يحمل اقتراحاً سابقاً
+  const chooseTopic = (key, label = '') => {
+    setTopic(key === 'general' ? null : key);
+    if (key === 'service') setServiceLabel(label);
+    if (state === 'sent' || state === 'failed') setState('idle');
+    setValues(v => {
+      if (v.message.trim() && v.message !== prefilled.current) return v;
+      const text = prefillFor(key, label);
+      prefilled.current = text;
+      return { ...v, message: text };
+    });
+  };
 
   useEffect(() => {
-    if (successMessage || errorMessage) {
-      const timer = setTimeout(() => {
-        setSuccessMessage(false);
-        setErrorMessage(false);
-      }, 6000);
-      return () => clearTimeout(timer);
-    }
-  }, [successMessage, errorMessage]);
+    const onIntent = (event) => {
+      const detail = event.detail;
+      if (detail && typeof detail === 'object' && detail.topic === 'service') chooseTopic('service', detail.label);
+      else if (TOPICS[detail]) chooseTopic(detail);
+      else return;
+      setTimeout(() => refs.message.current?.focus({ preventScroll: true }), 700);
+    };
+    window.addEventListener(CONTACT_INTENT_EVENT, onIntent);
+    return () => window.removeEventListener(CONTACT_INTENT_EVENT, onIntent);
+  });
+
+  const update = (field) => (e) => setValues(v => ({ ...v, [field]: e.target.value }));
+  const blur = (field) => () => setTouched(tc => ({ ...tc, [field]: true }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setSubmitting(true);
-    setSuccessMessage(false);
-    setErrorMessage(false);
+    if (sending.current) return; // لا إرسال مكرر
+    setTouched({ name: true, email: true, message: true });
+    const first = ['name', 'email', 'message'].find(f => errors[f]);
+    if (first) { refs[first].current?.focus(); return; }
 
+    sending.current = true;
+    setState('sending');
     const formData = new FormData(e.target);
-
+    formData.delete('topic-choice'); // اختيار الموضوع واجهة فقط؛ يصل الموضوع في _subject
     try {
-      const response = await fetch("https://formsubmit.co/ajax/manara.gaza.pal@gmail.com", {
-        method: "POST",
-        body: formData,
-        headers: { 'Accept': 'application/json' }
-      });
-
-      if (response.ok) {
-        setSuccessMessage(true);
-        e.target.reset(); 
-      } else {
-        setErrorMessage(true);
-      }
-    } catch (error) {
-      setErrorMessage(true);
+      const response = await fetch(ENDPOINT, { method: 'POST', body: formData, headers: { Accept: 'application/json' } });
+      const body = await response.json().catch(() => ({}));
+      // formsubmit يعيد success: "false" أحياناً مع حالة 200
+      if (response.ok && String(body.success) !== 'false') {
+        setState('sent');
+        setValues({ name: '', email: '', message: '' });
+        setTouched({});
+        setTopic(null);
+        prefilled.current = '';
+      } else setState('failed');
+    } catch {
+      setState('failed');
     } finally {
-      setSubmitting(false);
+      sending.current = false;
     }
   };
 
+  const field = (name) => ({
+    id: `${uid}-${name}`,
+    ref: refs[name],
+    name,
+    value: values[name],
+    onChange: update(name),
+    onBlur: blur(name),
+    'aria-invalid': showError(name) ? 'true' : undefined,
+    'aria-describedby': showError(name) ? `${uid}-${name}-error` : undefined,
+    className: `contact-input${showError(name) ? ' is-invalid' : ''}`,
+  });
+  const errorText = (name) => (showError(name)
+    ? <p id={`${uid}-${name}-error`} className="contact-error"><FiAlertCircle aria-hidden="true" />{errors[name]}</p> : null);
+
+  const phoneHref = `tel:${String(t.phone || '').replace(/[^\d+]/g, '')}`;
+  const mailBody = encodeURIComponent(values.message);
+
   return (
-    <section id='contact' className="py-24 bg-white overflow-hidden">
-      <div className="container mx-auto px-6 grid md:grid-cols-12 gap-12 items-start">
-        
-        {/* نموذج الإرسال */}
-        <motion.div 
-          initial={{ opacity: 0, x: isAr ? 50 : -50 }}
-          whileInView={{ opacity: 1, x: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6, ease: "easeOut" }}
-          className={`md:col-span-7 bg-white p-8 md:p-12 rounded-[2rem] shadow-xl shadow-gray-200/50 border border-gray-100 relative ${isAr ? 'md:order-2' : 'md:order-1'}`} 
-          dir={isAr ? 'rtl' : 'ltr'}
-        >
-          <div className="flex items-center gap-3 mb-8">
-            <div className="p-2.5 bg-[#211551] text-[#f97316] rounded-xl">
-              <FiMail className="text-xl" />
-            </div>
-            <h3 className="text-xl font-bold text-[#211551]">
-              {t.sendMsgTitle || (isAr ? 'أرسل لنا رسالة' : 'Send us a message')}
-            </h3>
-          </div>
+    <section id="contact" className="contact-section" aria-labelledby="contact-title">
+      <div className="container mx-auto px-6 md:px-10" dir={isAr ? 'rtl' : 'ltr'}>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-stretch">
 
-          <form onSubmit={handleSubmit}>
-            <input type="hidden" name="_template" value="table" />
+          {/* الدعوة وقنوات التواصل */}
+          <motion.div {...reveal()} className="lg:col-span-5 contact-invite">
+            <span className="contact-invite-beam" aria-hidden="true" />
+            <Kicker tone="dark">{isAr ? 'تواصل معنا' : 'Contact us'}</Kicker>
+            <h2 id="contact-title" className="mt-4 text-3xl md:text-[2.4rem] font-bold text-white leading-tight">{t.contactTitle}</h2>
+            <p className="mt-4 text-brand-gray leading-8">{t.contactDesc}</p>
+            <p className="mt-4 text-sm text-brand-tint/80 leading-7">{isAr ? 'نرحّب بأسئلتكم عن الورش، وبالتطوّع، والشراكات التعليمية، وكل فكرة تدعم تعلّم الطلاب.' : 'We welcome questions about workshops, volunteering, educational partnerships, and any idea that supports students’ learning.'}</p>
 
-            <div className="grid md:grid-cols-2 gap-6 mb-6">
-              
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-gray-500">
-                  {t.nameLabel || (isAr ? 'الاسم' : 'Name')}
-                </label>
-                <input 
-                  name="name" 
-                  type="text" 
-                  placeholder={t.namePlaceholder || (isAr ? 'أدخل اسمك' : 'Enter your name')} 
-                  className="p-4 rounded-2xl bg-gray-50/80 border border-gray-100 focus:border-[#f97316] focus:bg-white outline-none w-full text-gray-700 transition-all text-sm" 
-                  required 
-                />
-              </div>
+            <ul className="mt-8 space-y-3">
+              <Channel icon={FiMail} label={isAr ? 'البريد الإلكتروني' : 'Email'} value={t.email} href={`mailto:${t.email}`} copy={t.email} isAr={isAr} ltr />
+              <Channel icon={FiPhone} label={isAr ? 'الهاتف' : 'Phone'} value={t.phone} href={phoneHref} copy={t.phone} isAr={isAr} ltr />
+              <Channel icon={FiMapPin} label={isAr ? 'العنوان' : 'Address'} value={t.address} isAr={isAr} />
+            </ul>
 
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-gray-500">
-                  {t.emailLabel || (isAr ? 'البريد الإلكتروني' : 'Email')}
-                </label>
-                <input 
-                  name="email" 
-                  type="email" 
-                  placeholder={t.emailPlaceholder || "example@mail.com"} 
-                  className="p-4 rounded-2xl bg-gray-50/80 border border-gray-100 focus:border-[#f97316] focus:bg-white outline-none w-full text-gray-700 transition-all text-sm text-left" 
-                  dir="ltr"
-                  required 
-                />
-              </div>
-              
-            </div>
-
-            <div className="flex flex-col gap-2 mb-8">
-              <label className="text-xs font-semibold text-gray-500">
-                {t.messageLabel || (isAr ? 'الرسالة' : 'Message')}
-              </label>
-              <textarea 
-                name="message" 
-                placeholder={t.messagePlaceholder || (isAr ? 'كيف يمكننا مساعدتك؟' : 'How can we help you?')} 
-                className="w-full p-4 rounded-2xl bg-gray-50/80 border border-gray-100 focus:border-[#f97316] focus:bg-white outline-none h-44 text-gray-700 resize-none transition-all text-sm" 
-                required
-              ></textarea>
-            </div>
-
-            <button 
-              type="submit" 
-              disabled={submitting}
-              className="w-full md:w-auto bg-[#f97316] text-white px-10 py-3.5 rounded-xl font-semibold hover:bg-[#ea580c] shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:-translate-y-0.5 transition-all duration-300 flex items-center justify-center disabled:opacity-50 text-sm"
-            >
-              {submitting ? (isAr ? 'جاري الإرسال...' : 'Sending...') : (t.sendBtn || (isAr ? 'إرسال' : 'Send'))}
-            </button>
-
-            {successMessage && (
-              <div className="mt-4 p-4 bg-green-50 text-green-700 rounded-2xl text-center text-sm font-medium">
-                {isAr ? 'تم الإرسال بنجاح، شكراً لتواصلك معنا!' : 'Sent successfully, thank you!'}
-              </div>
-            )}
-
-            {errorMessage && (
-              <div className="mt-4 p-4 bg-red-50 text-red-700 rounded-2xl text-center text-sm font-medium">
-                {isAr ? 'حدث خطأ أثناء الإرسال، يرجى المحاولة مرة أخرى.' : 'An error occurred, please try again.'}
-              </div>
-            )}
-          </form>
-        </motion.div>
-
-        {/* قسم معلومات التواصل */}
-        <motion.div 
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true }}
-          variants={{
-            hidden: { opacity: 0 },
-            visible: {
-              opacity: 1,
-              transition: {
-                staggerChildren: 0.15
-              }
-            }
-          }}
-          className={`md:col-span-5 space-y-4 ${isAr ? 'text-right md:order-1' : 'text-left md:order-2'}`} 
-          dir={isAr ? 'rtl' : 'ltr'}
-        >
-          
-          <motion.div 
-            variants={{ hidden: { opacity: 0, x: isAr ? -30 : 30 }, visible: { opacity: 1, x: 0 } }}
-            className={`flex items-center gap-2 mb-2 ${isAr ? 'flex-row' : 'flex-row'}`}
-          >
-            <span className="w-2.5 h-2.5 rounded-full bg-[#f97316]"></span>
-            <h2 className="text-lg font-bold text-[#211551]">
-              {t.contactTitle || (isAr ? 'ابق على اتصال بنبضنا' : 'Get in touch')}
-            </h2>
-          </motion.div>
-
-          {/* بطاقة العنوان */}
-          <motion.div 
-            variants={{ hidden: { opacity: 0, x: isAr ? -30 : 30 }, visible: { opacity: 1, x: 0 } }}
-            whileHover={{ scale: 1.02, x: isAr ? -5 : 5 }}
-            className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4 transition-shadow hover:shadow-md cursor-pointer"
-          >
-            <div className={`p-3.5 bg-[#211551] text-white rounded-xl shadow-sm ${isAr ? 'order-2' : 'order-1'}`}>
-              <FiMapPin className="text-xl text-orange-400" />
-            </div>
-            <div className={`flex-1 ${isAr ? 'order-1 text-right' : 'order-2 text-left'}`}>
-              <h4 className="font-bold text-[#211551] text-sm">{isAr ? 'العنوان' : 'Address'}</h4>
-              <p className="text-xs text-gray-500 mt-0.5">{t.address || (isAr ? 'غزة، فلسطين' : 'Palestine, Gaza Strip')}</p>
+            <div className="mt-8 flex items-center gap-3">
+              <span className="text-xs text-brand-gray">{isAr ? 'تابعنا' : 'Follow us'}</span>
+              <a href="https://www.facebook.com/profile.php?id=61591327107257" target="_blank" rel="noopener noreferrer" className="contact-social" aria-label="Facebook"><FaFacebookF aria-hidden="true" /></a>
+              <a href="https://www.linkedin.com/company/manara03/posts/?feedView=all" target="_blank" rel="noopener noreferrer" className="contact-social" aria-label="LinkedIn"><FaLinkedinIn aria-hidden="true" /></a>
+              <a href="https://www.instagram.com/manara.pal/" target="_blank" rel="noopener noreferrer" className="contact-social" aria-label="Instagram"><FaInstagram aria-hidden="true" /></a>
             </div>
           </motion.div>
 
-          {/* بطاقة الهاتف */}
-          <motion.div 
-            variants={{ hidden: { opacity: 0, x: isAr ? -30 : 30 }, visible: { opacity: 1, x: 0 } }}
-            whileHover={{ scale: 1.02, x: isAr ? -5 : 5 }}
-            className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4 transition-shadow hover:shadow-md cursor-pointer"
-          >
-            <div className={`p-3.5 bg-[#211551] text-white rounded-xl shadow-sm ${isAr ? 'order-2' : 'order-1'}`}>
-              <FiPhone className="text-xl text-orange-400" />
-            </div>
-            <div className={`flex-1 ${isAr ? 'order-1 text-right' : 'order-2 text-left'}`}>
-              <h4 className="font-bold text-[#211551] text-sm">{isAr ? 'الهاتف' : 'Phone'}</h4>
-              <p className="text-xs text-gray-500 mt-0.5" dir="ltr">{t.phone || '+970 8 123 4567'}</p>
-            </div>
+          {/* النموذج */}
+          <motion.div {...reveal(0.1)} className="lg:col-span-7 contact-card">
+            <AnimatePresence mode="wait" initial={false}>
+              {state === 'sent' ? (
+                <motion.div key="sent" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.45, ease: EASE }}
+                  className="contact-sent" role="status">
+                  <span className="contact-sent-mark" aria-hidden="true"><FiCheck /></span>
+                  <h3 className="mt-6 text-2xl font-bold text-brand-purple">{isAr ? 'وصلت رسالتك' : 'Your message was sent'}</h3>
+                  <p className="mt-3 text-gray-600 leading-7 max-w-md">{isAr ? 'شكراً لتواصلك مع منارة. وصلت رسالتك إلى الفريق، ويكون الرد عبر بريدك الإلكتروني.' : 'Thank you for contacting Manara. Your message reached the team, and replies come to your email.'}</p>
+                  <button type="button" onClick={() => setState('idle')} className="contact-ghost mt-8">{isAr ? 'إرسال رسالة أخرى' : 'Send another message'}</button>
+                </motion.div>
+              ) : (
+                <motion.form key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onSubmit={handleSubmit} noValidate aria-busy={state === 'sending'}>
+                  <input type="hidden" name="_template" value="table" />
+                  {topicLabel && <input type="hidden" name="_subject" value={`${isAr ? 'منارة — ' : 'Manara — '}${topicLabel}`} />}
+                  {/* فخ للرسائل الآلية: مخفي عن الزوار وقارئات الشاشة */}
+                  <input type="text" name="_honey" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden="true" />
+
+                  <fieldset>
+                    <legend className="text-sm font-bold text-brand-purple mb-3">{isAr ? 'عمّ تودّ أن تكتب؟' : 'What is your message about?'}</legend>
+                    <div className="flex flex-wrap gap-2">
+                      {CHIPS.map(key => {
+                        const selected = key === 'general' ? !topic : topic === key;
+                        return (
+                          <label key={key} className={`contact-chip${selected ? ' is-selected' : ''}`}>
+                            <input type="radio" name="topic-choice" className="sr-only" checked={selected} onChange={() => chooseTopic(key)} />
+                            {TOPICS[key][lang][0]}
+                          </label>
+                        );
+                      })}
+                      {topic === 'service' && (
+                        <span className="contact-chip is-selected">{serviceLabel}</span>
+                      )}
+                    </div>
+                  </fieldset>
+
+                  <div className="grid md:grid-cols-2 gap-5 mt-7">
+                    <div>
+                      <label htmlFor={`${uid}-name`} className="contact-label">{isAr ? 'الاسم' : 'Name'}</label>
+                      <input type="text" autoComplete="name" placeholder={t.namePlaceholder} {...field('name')} />
+                      {errorText("name")}
+                    </div>
+                    <div>
+                      <label htmlFor={`${uid}-email`} className="contact-label">{isAr ? 'البريد الإلكتروني' : 'Email'}</label>
+                      <input type="email" autoComplete="email" inputMode="email" dir="ltr" placeholder={t.emailPlaceholder} {...field('email')} />
+                      {errorText("email")}
+                    </div>
+                  </div>
+                  <div className="mt-5">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <label htmlFor={`${uid}-message`} className="contact-label">{isAr ? 'الرسالة' : 'Message'}</label>
+                      <span className="text-xs text-gray-400 tabular-nums" aria-hidden="true">{values.message.length}</span>
+                    </div>
+                    <textarea rows={6} placeholder={t.messagePlaceholder} {...field('message')} />
+                    {errorText("message")}
+                  </div>
+
+                  {state === 'failed' && (
+                    <div className="contact-failed" role="alert">
+                      <FiAlertCircle aria-hidden="true" className="shrink-0 mt-0.5" />
+                      <span>
+                        {isAr ? 'لم تُرسل الرسالة بسبب مشكلة في الاتصال. حاول مرة أخرى، أو ' : 'The message was not sent because of a connection problem. Try again, or '}
+                        <a href={`mailto:${t.email}?body=${mailBody}`} className="underline font-semibold">{isAr ? 'أرسلها من بريدك مباشرة' : 'send it from your email app'}</a>.
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="mt-7 flex flex-wrap items-center gap-4">
+                    <button type="submit" disabled={state === 'sending'} className="contact-submit">
+                      {state === 'sending'
+                        ? <><span className="contact-spinner" aria-hidden="true" />{isAr ? 'جاري الإرسال…' : 'Sending…'}</>
+                        : state === 'failed'
+                          ? <><FiRefreshCw aria-hidden="true" />{isAr ? 'إعادة المحاولة' : 'Try again'}</>
+                          : <><FiSend aria-hidden="true" className={isAr ? '-scale-x-100' : ''} />{t.sendBtn}</>}
+                    </button>
+                    <p className="text-xs text-gray-500">{isAr ? 'يصل الرد إلى بريدك الإلكتروني.' : 'Replies come to your email.'}</p>
+                  </div>
+                </motion.form>
+              )}
+            </AnimatePresence>
           </motion.div>
-
-          {/* بطاقة البريد الإلكتروني */}
-          <motion.div 
-            variants={{ hidden: { opacity: 0, x: isAr ? -30 : 30 }, visible: { opacity: 1, x: 0 } }}
-            whileHover={{ scale: 1.02, x: isAr ? -5 : 5 }}
-            className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4 transition-shadow hover:shadow-md cursor-pointer"
-          >
-            <div className={`p-3.5 bg-[#211551] text-white rounded-xl shadow-sm ${isAr ? 'order-2' : 'order-1'}`}>
-              <FiMail className="text-xl text-orange-400" />
-            </div>
-            <div className={`flex-1 ${isAr ? 'order-1 text-right' : 'order-2 text-left'}`}>
-              <h4 className="font-bold text-[#211551] text-sm">{isAr ? 'البريد الإلكتروني' : 'Email'}</h4>
-              <p className="text-xs text-gray-500 mt-0.5">{t.email || 'manara.gaza.pal@gmail.com'}</p>
-            </div>
-          </motion.div>
-
-          {/* بطاقة وسائل التواصل الاجتماعي */}
-          <motion.div 
-            variants={{ hidden: { opacity: 0, x: isAr ? -30 : 30 }, visible: { opacity: 1, x: 0 } }}
-            whileHover={{ scale: 1.02, x: isAr ? -5 : 5 }}
-            className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between transition-shadow hover:shadow-md"
-          >
-            <span className="text-xs font-bold text-[#211551]">
-              {isAr ? 'تابعنا على' : 'Follow us on'}
-            </span>
-            <div className={`flex gap-2 ${isAr ? 'flex-row-reverse' : 'flex-row'}`}>
-              <a href="https://www.facebook.com/profile.php?id=61591327107257" target="_blank" rel="noopener noreferrer" className="w-9 h-9 rounded-xl bg-gray-50 text-gray-600 flex items-center justify-center hover:bg-[#f97316] hover:text-white transition-all shadow-sm">
-                <FaFacebookF className="text-xs" />
-              </a>
-              <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="w-9 h-9 rounded-xl bg-gray-50 text-gray-600 flex items-center justify-center hover:bg-[#f97316] hover:text-white transition-all shadow-sm">
-                <FaXTwitter className="text-xs" />
-              </a>
-              <a href="https://www.linkedin.com/company/manara03/posts/?feedView=all" target="_blank" rel="noopener noreferrer" className="w-9 h-9 rounded-xl bg-gray-50 text-gray-600 flex items-center justify-center hover:bg-[#f97316] hover:text-white transition-all shadow-sm">
-                <FaLinkedinIn className="text-xs" />
-              </a>
-              <a href="https://www.instagram.com/manara.pal/" target="_blank" rel="noopener noreferrer" className="w-9 h-9 rounded-xl bg-gray-50 text-gray-600 flex items-center justify-center hover:bg-[#f97316] hover:text-white transition-all shadow-sm">
-                <FaInstagram className="text-xs" />
-              </a>
-            </div>
-          </motion.div>
-
-        </motion.div>
-
+        </div>
       </div>
     </section>
   );

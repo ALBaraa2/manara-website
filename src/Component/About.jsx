@@ -21,7 +21,7 @@ function Counter({ from, to }) {
 
 function About() {
   const { lang, t } = useContext(LanguageContext);
-  const icons = [<FiTarget />, <FiCpu />, <FiTool />];
+  const icons = [FiTarget, FiCpu, FiTool];
   const isAr = lang === 'AR';
 
   return (
@@ -36,19 +36,19 @@ function About() {
             transition={{ duration: 0.8 }}
             className={`space-y-6 ${isAr ? 'text-right' : 'text-left'}`}
           >
-            <h2 className="text-4xl font-bold text-[#211551] leading-snug">{t.aboutTitle}</h2>
+            <h2 className="text-4xl font-bold text-brand-purple leading-snug">{t.aboutTitle}</h2>
             <p className="text-gray-600 leading-relaxed text-lg">{t.aboutDesc}</p>
             
             {/* الإحصائيات */}
             <div className="flex gap-12 pt-6">
               <div>
-                <h3 className="text-4xl font-bold text-orange-500">
+                <h3 className="text-4xl font-bold text-brand-orange">
                   <Counter from={0} to={40} />+
                 </h3>
                 <p className="text-gray-500">{t.stats.projects}</p>
               </div>
               <div>
-                <h3 className="text-4xl font-bold text-orange-500">
+                <h3 className="text-4xl font-bold text-brand-orange">
                   <Counter from={0} to={500} />+
                 </h3>
                 <p className="text-gray-500">{t.stats.trainees}</p>
@@ -58,7 +58,9 @@ function About() {
 
           {/* قسم النقاط والبطاقات (يظهر في اليسار بالعربي، وفي اليمين بالإنجليزي) */}
           <div className="space-y-8">
-            {t.points.map((point, index) => (
+            {t.points.map((point, index) => {
+              const Icon = icons[index];
+              return (
               <motion.div 
                 key={index}
                 initial={{ x: isAr ? -100 : 100, opacity: 0 }}
@@ -70,16 +72,17 @@ function About() {
                   ease: "easeOut" 
                 }}
                 // استخدام border-s-4 لكي تتكيف الحدود البرتقالية تلقائياً مع الاتجاهين
-                className={`flex gap-4 p-4 border-s-4 border-orange-500 bg-gray-50 rounded-lg shadow-sm ${isAr ? 'text-right' : 'text-left'}`}
+                className={`flex gap-4 p-4 border-s-4 border-brand-orange bg-brand-tint rounded-lg shadow-sm ${isAr ? 'text-right' : 'text-left'}`}
               >
-                <div className="text-orange-500 text-3xl mt-1">{icons[index]}</div>
+                <div className="text-brand-orange text-3xl mt-1">{Icon && <Icon aria-hidden="true" />}</div>
                 <div>
-                  {/* تم تحديث لون العنوان ليطابق لون عناوين قسم الخدمات #211551 */}
-                  <h4 className="font-bold text-xl text-[#211551]">{point.title}</h4>
+                  {/* لون العنوان يطابق عناوين قسم الخدمات (brand-purple) */}
+                  <h4 className="font-bold text-xl text-brand-purple">{point.title}</h4>
                   <p className="text-gray-600 text-sm mt-1">{point.desc}</p>
                 </div>
               </motion.div>
-            ))}
+              );
+            })}
           </div>
 
         </div>

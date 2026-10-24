@@ -4,12 +4,24 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  // three تُحمَّل بـ import ديناميكي (المشهد ثلاثي الأبعاد في الواجهة الأولى)، فنجهّزها مسبقاً
+  // حتى لا يكتشفها خادم التطوير متأخراً ويعيد تحميل الصفحة
+  optimizeDeps: {
+    include: ['three', 'three/addons/objects/Reflector.js'],
+  },
+
   plugins: [
     react(),
     tailwindcss(),
 
     VitePWA({
       registerType: 'autoUpdate',
+
+      // طلبات الـ API والملفات تُخدم من Laravel على نفس الأصل؛ بدون هذا الاستثناء
+      // كان الـ service worker يعيد index.html عند فتح روابط الملفات أو CSV في تبويب جديد
+      workbox: {
+        navigateFallbackDenylist: [/^\/api\//, /^\/storage\//, /^\/sanctum\//],
+      },
 
       manifest: {
         id: '/',
@@ -35,12 +47,6 @@ export default defineConfig({
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any'
-          },
-          {
-            src: '/icon-512-maskable.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable'
           }
         ]
       }

@@ -1,100 +1,151 @@
-import React, { useContext } from 'react';
+import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { LanguageContext } from '../LanguageContext';
-import { motion } from 'framer-motion';
-import { Typewriter } from 'react-simple-typewriter';
+import { motion, useReducedMotion, useScroll, useTransform, useMotionValue } from 'framer-motion';
+import HeroScene from './HeroScene';
+import StoryFallback from './StoryFallback';
+import ManaraStory from './ManaraStory';
+import { manaraStory } from '../content/manaraStory';
+import { storyState, progressAt } from '../lib/storyTimeline';
 
-function HeroSection() {
+const EASE = [0.22, 1, 0.36, 1];
+const LG = 1024;
+
+function HeroSection({ ready = true }) {
   const { lang, t } = useContext(LanguageContext);
   const isAr = lang === 'AR';
+  const reduceMotion = useReducedMotion();
+  const sectionRef = useRef(null);
+  const textRef = useRef(null);
+  const shineRef = useRef(null);
+  const [mode, setMode] = useState('3d');
+
+  const { scrollYProgress } = useScroll({ target: sectionRef, offset: ['start start', 'end end'] });
+  const journey = useMotionValue(0);
+  const copy = manaraStory[lang];
+  useEffect(() => {
+    const root = sectionRef.current;
+    let stops = [0];
+    let travel = 1;
+    const update = () => journey.set(progressAt(scrollYProgress.get() * travel, stops));
+    const measure = () => {
+      const top = root.getBoundingClientRect().top;
+      travel = Math.max(1, root.offsetHeight - window.innerHeight);
+      stops = [0, ...Array.from(root.querySelectorAll('[data-story-chapter]'), el =>
+        el.getBoundingClientRect().top - top - window.innerHeight * 0.1)];
+      update();
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    window.addEventListener('resize', measure);
+    measure();
+    const unsubscribe = scrollYProgress.on('change', update);
+    return () => { observer.disconnect(); unsubscribe(); window.removeEventListener('resize', measure); };
+  }, [journey, scrollYProgress, lang]);
+  const background = useTransform(journey, v => `color-mix(in srgb-linear, var(--color-brand-story-dark), var(--color-story-lit) ${storyState(v).light * 100}%)`);
+  const textY = useTransform(journey, (v) => (reduceMotion ? 0 : v * 70));
+  const textOpacity = useTransform(journey, [0, 0.7], [1, reduceMotion ? 1 : 0]);
+
+  // أين تقف المنارة على الشاشة: بجانب النص على الشاشات العريضة، وتحته على الضيقة
+  // (القيم نسب من عرض/ارتفاع القسم؛ height = المسافة بين قاعدة المنارة ومصباحها)
+  const getComposition = useCallback((w, h) => {
+    // نفس نقطة التحول في Tailwind (lg) — تُقاس على عرض النافذة لا القسم (الذي ينقص بعرض شريط التمرير)
+    if (window.matchMedia(`(min-width: ${LG}px)`).matches) return { x: isAr ? 0.25 : 0.75, y: 0.28, height: 0.5 };
+    const el = textRef.current;
+    const textBottom = el ? (el.offsetTop + el.offsetHeight) / h : 0.6;
+    // القبة والمؤشر فوق المصباح بنحو 17% من ارتفاع المنارة، فنضع المصباح بحيث تبقى قمتها تحت النص
+    const y = Math.min(Math.max((textBottom + 0.183) / 1.17, textBottom + 0.06, 0.5), 0.8);
+    return { x: 0.5, y, height: Math.max(0.9 - y, 0.14) };
+  }, [isAr]);
+
+  const handleFail = useCallback(() => setMode('fallback'), []);
+
+  const words = (t.heroTitle2 || '').split(' ');
+  const state = ready ? 'show' : 'hidden';
+  const initial = reduceMotion ? false : 'hidden';
+
+  const container = {
+    hidden: {},
+    show: { transition: { staggerChildren: 0.07, delayChildren: mode === '3d' ? 1.4 : 0.35 } },
+  };
+  const rise = {
+    hidden: { opacity: 0, y: 24 },
+    show: { opacity: 1, y: 0, transition: { duration: 0.9, ease: EASE } },
+  };
+  const word = {
+    hidden: { opacity: 0, y: '0.45em', filter: 'blur(10px)' },
+    show: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.8, ease: EASE } },
+  };
 
   return (
-    <section id='home' className="relative min-h-[85vh] bg-[#1a1a2e] overflow-hidden flex items-center pt-20 pb-24">
-      
-      {/* توهج الخلفية البرتقالي */}
-      <div className={`absolute top-1/4 ${isAr ? 'right-0' : 'left-0'} w-[400px] h-[400px] bg-orange-600/10 rounded-full blur-[120px] -z-0`}></div>
+    <motion.div
+      style={{ '--story-background': background }}
+      ref={sectionRef}
+      className="manara-journey relative isolate bg-brand-night"
+    >
+      <div className="manara-stage">
+      {/* السماء قبل تحميل المشهد (وتبقى خلفية للبديل ثنائي الأبعاد) */}
+      <div
+        className="absolute inset-0 -z-10"
+        style={{
+          background: `radial-gradient(ellipse 70% 60% at ${isAr ? '28%' : '72%'} 38%, var(--color-brand-purple) 0%, var(--color-brand-purple-dark) 42%, var(--color-brand-night) 100%)`,
+        }}
+        aria-hidden="true"
+      />
 
-      <div className="container mx-auto px-6 md:px-12 z-10">
-        
-        <div className={`flex flex-col md:flex-row ${isAr ? '' : 'md:flex-row-reverse'} items-center justify-between gap-8`}>
-          
-          {/* قسم الصورة (المنارة ثابتة) */}
-          <motion.div
-            initial={{ x: isAr ? -100 : 100, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            // تم إزالة خاصية animate و transition الخاصة بالحركة المستمرة من هنا
-            className="flex-1 w-full flex justify-center"
-          >
-            <img 
-              src="Hero.png" 
-              alt="Manara" 
-              className="w-[320px] md:w-[420px] max-w-full drop-shadow-2xl scale-x-[-1]" 
-            />
-          </motion.div>
+      {mode === '3d' ? (
+        <HeroScene
+          shineRef={shineRef}
+          ready={ready}
+          mirrored={!isAr}
+          getComposition={getComposition}
+          layoutKey={lang}
+          scrollProgress={journey}
+          onFail={handleFail}
+        />
+      ) : (
+        <StoryFallback ready={ready} isAr={isAr} progress={journey} />
+      )}
 
-          {/* قسم النص */}
-          <motion.div
-            initial={{ x: isAr ? 100 : -100, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            transition={{ duration: 1, ease: "easeOut" }}
-            className={`flex-1 w-full ${isAr ? 'text-right' : 'text-left'}`}
-          >
-            {/* الشعار العلوي */}
-            <div className={`inline-block mb-3 ${isAr ? 'ml-auto' : 'mr-auto'}`}>
-              <span className="inline-block bg-[#3b2721] text-orange-400 border border-orange-500/30 px-4 py-1.5 rounded-full text-xs md:text-sm font-medium">
-                {t.heroSub}
+      </div>
+      <section id="home" className="manara-hero-content">
+      <div className="relative z-10 container mx-auto px-6 md:px-10 min-h-[100svh] grid grid-cols-1 lg:grid-cols-12 lg:gap-8 pointer-events-none">
+        <motion.div
+          ref={textRef}
+          style={{ y: textY, opacity: textOpacity }}
+          className="pointer-events-auto relative lg:col-span-7 self-start lg:self-center pt-28 pb-4 lg:pt-28 lg:pb-36 text-center lg:text-start"
+        >
+          <motion.div variants={container} initial={initial} animate={state} key={lang}>
+            <h1 className="font-extrabold text-white leading-[1.25] text-[clamp(1.9rem,5.4vw,4.4rem)] lg:text-[clamp(2.6rem,4.3vw,4.4rem)] [text-shadow:0_2px_24px_rgb(12_8_32/0.6)]">
+              <span className="block">
+                {words.map((w, i) => (
+                  <React.Fragment key={i}>
+                    <motion.span variants={word} className="inline-block">{w}</motion.span>
+                    {i < words.length - 1 && ' '}
+                  </React.Fragment>
+                ))}
               </span>
-            </div>
-            <h1 className="text-xl md:text-3xl font-bold text-[white] mb-4 leading-tight">
-              {t.heroTitle2}
+              <motion.span variants={word} className="block mt-1 pb-2">
+                <span ref={shineRef} className={`hero-shine${mode === 'fallback' ? (isAr ? ' hero-shine--sweep-right' : ' hero-shine--sweep-left') : ''}`}>{t.heroTitle}</span>
+              </motion.span>
             </h1>
-            
-            <h1 className="text-2xl md:text-4xl font-bold text-[#f37321] mb-4 leading-tight min-h-[1.2em] drop-shadow-[0_0_12px_rgba(243,115,33,0.4)]">
-              <Typewriter
-                key={lang}
-                words={[t.heroTitle]}
-                loop={1}
-                cursor
-                cursorStyle='_'
-                typeSpeed={110}
-                deleteSpeed={50}
-                delaySpeed={1000}
-              />
-            </h1>
-           
-            {/* الوصف */}
-            <p className={`text-gray-300 text-sm md:text-base max-w-xl mb-6 leading-relaxed ${isAr ? 'ml-auto' : 'mr-auto'}`}>
-              {t.heroDesc}
-            </p>
-           
-            {/* زر اتصل بنا */}
-            <a 
-              href="#contact" 
-              className="inline-block bg-orange-500 hover:bg-orange-600 text-white px-7 py-3 rounded-full font-bold transition-all shadow-lg shadow-orange-500/20 active:scale-95 text-sm"
-            >
-              {t.contact}
-            </a>
-          </motion.div>
 
-        </div>
+            <motion.p
+              variants={rise}
+              className="mt-4 lg:mt-6 text-brand-gray text-[15px] md:text-lg leading-relaxed max-w-xl mx-auto lg:mx-0 [text-shadow:0_1px_12px_rgb(12_8_32/0.8)]"
+            >
+              {t.heroDesc}
+            </motion.p>
+          </motion.div>
+        </motion.div>
       </div>
 
-      {/* التموج السفلي */}
-      <div className="absolute bottom-0 left-0 w-full overflow-hidden leading-none -z-0">
-        <svg 
-          className="relative block w-full h-[50px] md:h-[80px]" 
-          data-name="Layer 1" 
-          xmlns="http://www.w3.org/2000/svg" 
-          viewBox="0 0 1200 120" 
-          preserveAspectRatio="none"
-        >
-          <path 
-            d="M0,0 C150,90 350,-40 500,40 C650,120 900,20 1200,60 L1200,120 L0,120 Z" 
-            fill="#ffffff"
-          ></path>
-        </svg>
-        </div>
+      <p className="manara-scroll-cue">{copy.scroll} <span aria-hidden="true">↓</span></p>
+      </section>
+      <ManaraStory copy={copy} />
 
-    </section>
+      {/* حبيبات خفيفة تمنح الصورة ملمساً سينمائياً */}
+      <div className="hero-grain absolute inset-0 pointer-events-none" aria-hidden="true" />
+    </motion.div>
   );
 }
 

@@ -7,9 +7,9 @@ export const translations = {
     contact: "اتصل بنا",
     join: "انضم إلينا",
     heroSub: "مستقبل تقني جديد",
-    heroTitle: "نور يبدد الظلام",
-    heroTitle2:"منارة تُبنى من تحت الركام",
-    heroDesc: "من غزة، نبعث الأمل ونصلح العقول بالمعرفة. مبادرة تقنية تهدف لتمكين الشباب وتدريبهم على أحدث التقنيات ليكونوا منارة المستقبل في أصعب الظروف العالمية",
+    heroTitle: "نُورٌ يُبَدِّدُ الظَّلَامَ",
+    heroTitle2: "حين يضيع الطريق، نرفع منارة",
+    heroDesc: "فريق شبابي من غزة يصنع للطلاب فرصًا حقيقية للتعلّم: ورشات تقنية، وتدريب ميداني، ومشاريع تُحوِّل المعرفة إلى مهارة، مهما اشتدّت الظروف.",
     aboutTitle: "نحن لا نعلم فقط... نحن نعيد صياغة الواقع الرقمي",
     aboutDesc: "تأسست 'منارة' لتكون جسراً يعبر فوق الصعوبات، تؤمن أن المعرفة هي السلاح الأقوى، والتقنية هي لغة العصر التي لا نعترف بالحدود الجغرافية",
     points: [
@@ -60,8 +60,8 @@ export const translations = {
     join: "Join Us",
     heroSub: "A New Tech Future",
     heroTitle: "Light That Dispels Darkness",
-    heroTitle2:"Manara Built from Beneath the Rubble",
-    heroDesc: "From Gaza, we spread hope and build minds with knowledge",
+    heroTitle2: "Where the path is lost, we raise a lighthouse",
+    heroDesc: "A youth team from Gaza creating real learning opportunities for students: technical workshops, field training and projects that turn knowledge into skill, whatever the circumstances.",
     aboutTitle: "We don't just teach... we reshape the digital reality",
     aboutDesc: "Manara was established to be a bridge over difficulties, believing that knowledge is the strongest weapon",
     points: [

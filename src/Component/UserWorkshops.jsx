@@ -1,183 +1,188 @@
-import React, { useEffect, useState, useContext } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { FiArrowUpRight, FiRefreshCw, FiSearch } from 'react-icons/fi';
 import { LanguageContext } from '../LanguageContext';
 import axiosClient from '../Api/axiosClient';
-import { FiArrowRight } from 'react-icons/fi';
-import { motion } from 'framer-motion';
+import { localize } from '../lib/localize';
+import { resolveMediaUrl } from '../lib/media';
+import SectionLink from './SectionLink';
+import { CoverImage, Kicker } from './brand';
+import { reveal } from '../lib/brand';
+import { announceIntent } from '../lib/contactIntent';
+
+// لوحة الفرص: أحدث ورشة بارزة، وبقية الورش صفوف قابلة للنقر بالكامل تنتهي بالتسجيل.
+// البيانات من GET /forms (النماذج المنشورة فقط، الأحدث أولاً). لا يعيد الـ API تواريخ أو تصنيفات أو مدربين،
+// لذا لا نعرض شيئاً من ذلك؛ «الأحدث» حقيقي لأن الترتيب من الخادم.
+const SEARCH_FROM = 7; // البحث يظهر فقط حين يكثر عدد الورش
+
+function useWorkshops() {
+  const [forms, setForms] = useState([]);
+  const [status, setStatus] = useState('loading');
+  const load = useCallback(() => {
+    let cancelled = false;
+    setStatus('loading');
+    axiosClient.get('/forms')
+      .then((response) => {
+        if (cancelled) return;
+        setForms(Array.isArray(response.data.data) ? response.data.data.filter((form) => form?.slug) : []);
+        setStatus('ready');
+      })
+      .catch(() => { if (!cancelled) setStatus('error'); });
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => load(), [load]);
+  return { forms, status, retry: load };
+}
+
+const toTop = () => window.scrollTo({ top: 0, behavior: 'instant' });
+
+function Featured({ form, lang, isAr }) {
+  const title = localize(form.title, lang, isAr ? 'ورشة عمل' : 'Workshop');
+  const description = localize(form.description, lang);
+  return (
+    <motion.article {...reveal(0.05)} className="workshop-featured group">
+      <Link to={`/forms/${form.slug}`} onClick={toTop} className="workshop-featured-link" aria-label={`${isAr ? 'سجّل في' : 'Register for'}: ${title}`}>
+        <div className="workshop-featured-body">
+          <span className="workshop-badge">{isAr ? 'الأحدث' : 'Newest'}</span>
+          <h3 className="mt-4 text-2xl md:text-[2rem] font-bold text-white leading-snug line-clamp-3" dir="auto">{title}</h3>
+          {description && <p className="mt-4 text-brand-gray leading-8 line-clamp-5" dir="auto">{description}</p>}
+          <span className="workshop-cta mt-8">
+            <span>{isAr ? 'سجّل الآن' : 'Register now'}</span>
+            <FiArrowUpRight aria-hidden="true" className={isAr ? '-scale-x-100' : ''} />
+          </span>
+        </div>
+        {/* النص أولاً (يمين العربية / يسار الإنجليزية) والصورة بجانبه */}
+        <CoverImage src={resolveMediaUrl(form.image)} tone="dark" className="workshop-featured-media" imgClassName="transition-transform duration-700 ease-out group-hover:scale-[1.04]" />
+      </Link>
+    </motion.article>
+  );
+}
+
+function Row({ form, index, lang, isAr }) {
+  const title = localize(form.title, lang, isAr ? 'ورشة عمل' : 'Workshop');
+  const description = localize(form.description, lang);
+  return (
+    <motion.li {...reveal(Math.min(index, 6) * 0.06, 16)}>
+      <Link to={`/forms/${form.slug}`} onClick={toTop} className="workshop-row group" aria-label={`${isAr ? 'سجّل في' : 'Register for'}: ${title}`}>
+        <span className="workshop-row-index" aria-hidden="true">{String(index + 2).padStart(2, '0')}</span>
+        <CoverImage src={resolveMediaUrl(form.image)} tone="dark" className="workshop-row-thumb" imgClassName="transition-transform duration-500 group-hover:scale-110" />
+        <span className="min-w-0 flex-1">
+          <span className="block text-lg font-bold text-white leading-snug line-clamp-2 group-hover:text-brand-orange-light transition-colors" dir="auto">{title}</span>
+          {description && <span className="block mt-1.5 text-sm text-brand-gray leading-7 line-clamp-2" dir="auto">{description}</span>}
+        </span>
+        <span className="workshop-row-go" aria-hidden="true"><FiArrowUpRight className={isAr ? '-scale-x-100' : ''} /></span>
+      </Link>
+    </motion.li>
+  );
+}
+
+// كيف تنضم: خطوات فعلية في الموقع، بلا وعود لا نعرف صحتها
+function JoinSteps({ isAr }) {
+  const steps = isAr
+    ? ['اختر ورشة من القائمة', 'افتح صفحتها واقرأ تفاصيلها', 'أرسل نموذج التسجيل']
+    : ['Pick a workshop from the list', 'Open its page and read the details', 'Send the registration form'];
+  return (
+    <motion.ol {...reveal(0.1)} className="workshop-steps">
+      {steps.map((step, i) => (
+        <li key={i} style={{ '--i': i }}>
+          <span className="workshop-steps-num">{i + 1}</span>
+          <span>{step}</span>
+        </li>
+      ))}
+    </motion.ol>
+  );
+}
+
+function Skeleton() {
+  return (
+    <div aria-hidden="true" className="space-y-6">
+      <div className="workshop-featured skeleton-block h-80" />
+      <div className="grid gap-3">{[0, 1].map(i => <div key={i} className="skeleton-block h-24 rounded-2xl" />)}</div>
+    </div>
+  );
+}
 
 const UserWorkshops = () => {
   const { lang } = useContext(LanguageContext);
   const isAr = lang === 'AR';
-  const location = useLocation();
+  const { forms, status, retry } = useWorkshops();
+  const [query, setQuery] = useState('');
 
-  const [forms, setForms] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [featured, ...rest] = forms;
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return rest;
+    return rest.filter(f => `${localize(f.title, lang)} ${localize(f.description, lang)}`.toLowerCase().includes(q));
+  }, [rest, query, lang]);
 
-  useEffect(() => {
-    const fetchForms = async () => {
-      try {
-        setLoading(true);
-        setErrorMessage('');
-
-        // جلب الـ Slugs المخزنة تلقائياً من المتصفح
-        const savedSlugs = JSON.parse(localStorage.getItem('my_workshop_slugs') || '[]');
-
-        if (savedSlugs.length === 0) {
-          setForms([]);
-          setLoading(false);
-          return;
-        }
-
-        // جلب تفاصيل كل ورشة بشكل متزامن باستخدام الـ slug الخاص بها
-        const formPromises = savedSlugs.map(async (slug) => {
-          try {
-            const response = await axiosClient.get(`/forms/${slug}`);
-            return response.data.data || response.data;
-          } catch (err) {
-            console.error(`Failed to fetch form with slug: ${slug}`, err);
-            return null;
-          }
-        });
-
-        const results = await Promise.all(formPromises);
-        const validForms = results.filter((form) => form !== null);
-
-        console.log('Fetched Workshops from LocalStorage:', validForms);
-        setForms(validForms);
-
-      } catch (error) {
-        console.error('Error fetching workshops:', error);
-
-        setErrorMessage(
-          isAr
-            ? 'عذراً، لم نتمكن من جلب الورش والدورات المتاحة حالياً.'
-            : 'Sorry, we could not fetch available workshops at the moment.'
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchForms();
-  }, [isAr, location.pathname]);
-
-  const getImageUrl = (form) => {
-    const rawImage = form.cover_image || form.image || form.image_url;
-    const fallbackImage = 'https://images.unsplash.com/photo-1531482615713-2afd69097998?auto=format&fit=crop&w=600&q=80';
-
-    if (!rawImage) return fallbackImage;
-    if (typeof rawImage === 'string' && rawImage.startsWith('http')) return rawImage;
-
-    const baseServerUrl = axiosClient.defaults.baseURL
-      ? axiosClient.defaults.baseURL.replace(/\/api\/?$/, '')
-      : 'http://43.156.53.131';
-
-    const cleanPath = String(rawImage).replace(/^\/+/, '').replace(/^storage\//, '');
-    return `${baseServerUrl}/storage/${cleanPath}`;
-  };
-
-  const handleRegisterClick = () => {
-    window.scrollTo({ top: 0, behavior: 'instant' });
-  };
+  const count = forms.length;
+  const countLabel = isAr
+    ? (count === 1 ? 'ورشة واحدة مفتوحة للتسجيل' : count === 2 ? 'ورشتان مفتوحتان للتسجيل'
+      : count <= 10 ? `${count} ورش مفتوحة للتسجيل` : `${count} ورشة مفتوحة للتسجيل`)
+    : `${count} ${count === 1 ? 'workshop' : 'workshops'} open for registration`;
 
   return (
-    <div id="workshops" className="min-h-screen bg-[#1a1a2e] text-gray-100 py-24 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-6xl mx-auto">
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-          className="text-center mb-16"
-          dir={isAr ? 'rtl' : 'ltr'}
-        >
-          <div className="w-16 h-1 bg-orange-500 mx-auto mb-5 rounded-full"></div>
-          <h1 className="text-3xl md:text-4xl font-bold text-white mb-3">
-            {isAr ? 'ورش ودورات منارة المتاحة' : 'Available Manara Workshops'}
-          </h1>
-          <p className="text-sm text-gray-300">
-            {isAr ? 'تصفح الورش الحالية وسجل فيها بسهولة لتبدأ رحلتك التقنية.' : 'Browse current workshops and register easily.'}
-          </p>
-        </motion.div>
+    <section id="workshops" className="workshops-section" aria-labelledby="workshops-title">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8" dir={isAr ? 'rtl' : 'ltr'}>
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 mb-12">
+          <motion.div {...reveal()} className="max-w-2xl">
+            <Kicker tone="dark">{isAr ? 'فرص التعلّم' : 'Learning opportunities'}</Kicker>
+            <h2 id="workshops-title" className="mt-4 text-3xl md:text-[2.6rem] font-bold text-white leading-tight">
+              {isAr ? 'ورش ودورات منارة المتاحة' : 'Available Manara Workshops'}
+            </h2>
+            <p className="mt-4 text-base md:text-lg text-brand-gray leading-relaxed">
+              {isAr ? 'تصفح الورش الحالية وسجل فيها بسهولة لتبدأ رحلتك التقنية.' : 'Browse current workshops and register easily to start your tech journey.'}
+            </p>
+          </motion.div>
+          {status === 'ready' && count > 0 && (
+            <motion.p {...reveal(0.15)} className="workshop-count" aria-live="polite">
+              <span className="workshop-count-dot" aria-hidden="true" />{countLabel}
+            </motion.p>
+          )}
+        </div>
 
-        {errorMessage && (
-          <div className="p-4 mb-6 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-center text-sm" dir={isAr ? 'rtl' : 'ltr'}>
-            {errorMessage}
+        {status === 'loading' && <><span className="sr-only" role="status">{isAr ? 'جاري تحميل الورش…' : 'Loading workshops…'}</span><Skeleton /></>}
+
+        {status === 'error' && (
+          <div className="workshop-state" role="alert">
+            <p className="text-white font-bold">{isAr ? 'تعذّر جلب الورش المتاحة حالياً.' : 'We could not load the available workshops.'}</p>
+            <p className="text-brand-gray text-sm mt-1">{isAr ? 'تحقق من اتصالك ثم حاول مرة أخرى.' : 'Check your connection and try again.'}</p>
+            <button type="button" onClick={retry} className="workshop-cta mt-6"><FiRefreshCw aria-hidden="true" />{isAr ? 'إعادة المحاولة' : 'Try again'}</button>
           </div>
         )}
 
-        {loading ? (
-          <div className="text-center py-12 text-gray-400">
-            {isAr ? 'جاري تحميل الورش والدورات...' : 'Loading workshops...'}
-          </div>
-        ) : forms.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8" dir="ltr">
-            {forms.map((form, index) => {
-              const title = typeof form.title === 'object' ? (isAr ? form.title?.ar || form.title?.en : form.title?.en || form.title?.ar) : form.title;
-              const description = typeof form.content === 'object' ? (isAr ? form.content?.ar || form.content?.en : form.content?.en || form.content?.ar) : (typeof form.description === 'object' ? (isAr ? form.description?.ar || form.description?.en : form.description?.en || form.description?.ar) : form.description || form.content);
-              const categoryName = form.category ? (typeof form.category === 'object' ? (isAr ? form.category?.ar || form.category?.en : form.category?.en || form.category?.ar) : form.category) : (isAr ? 'ورشة عمل' : 'Workshop');
-              const imageUrl = getImageUrl(form);
+        {status === 'ready' && count === 0 && (
+          <motion.div {...reveal()} className="workshop-state">
+            <p className="text-white text-xl font-bold">{isAr ? 'لا توجد ورش مفتوحة للتسجيل الآن' : 'No workshops are open for registration right now'}</p>
+            <p className="text-brand-gray mt-2 leading-7">{isAr ? 'تُنشر الورش الجديدة هنا فور فتح التسجيل. يمكنك سؤال الفريق عن الورش القادمة.' : 'New workshops appear here as soon as registration opens. You can ask the team about upcoming ones.'}</p>
+            <SectionLink id="contact" onClick={() => announceIntent('workshop')} className="workshop-cta mt-6">{isAr ? 'اسأل عن الورش القادمة' : 'Ask about upcoming workshops'}</SectionLink>
+          </motion.div>
+        )}
 
-              return (
-                <motion.div
-                  key={form.id || form.slug}
-                  initial={{ opacity: 0, y: 80 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6, delay: index * 0.2 }}
-                  whileHover={{ y: -10, scale: 1.03 }}
-                  className="bg-[#23233c] rounded-3xl overflow-hidden border border-orange-500/10 hover:border-orange-300 transition-all duration-300 flex flex-col group shadow-lg"
-                  dir={isAr ? 'rtl' : 'ltr'}
-                  style={{ textAlign: isAr ? 'right' : 'left' }}
-                >
-                  <div className="relative overflow-hidden h-52 bg-gray-800">
-                    <img
-                      src={imageUrl}
-                      alt={title || 'Workshop image'}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      onError={(e) => {
-                        e.target.onerror = null;
-                        e.target.src = 'https://images.unsplash.com/photo-1531482615713-2afd69097998?auto=format&fit=crop&w=600&q=80';
-                      }}
-                    />
-                    <span className="absolute top-4 right-4 bg-orange-500 text-white text-xs px-3 py-1 rounded-full font-medium shadow">
-                      {categoryName}
-                    </span>
-                  </div>
-
-                  <div className="p-8 flex flex-col flex-grow justify-between">
-                    <div>
-                      <h3 className="text-2xl font-bold text-white mb-5 group-hover:text-orange-400 transition-colors line-clamp-2">
-                        {title || (isAr ? 'ورشة عمل جديدة' : 'New Workshop')}
-                      </h3>
-                      <p className="text-gray-300 leading-8 text-sm mb-6 line-clamp-3">
-                        {description || (isAr ? 'انضم إلينا في هذه الورشة التطبيقية لتطوير مهاراتك التقنية' : 'Join us in this practical workshop.')}
-                      </p>
-                    </div>
-
-                    <div className="mt-auto pt-4 border-t border-gray-800">
-                      <Link
-                        to={`/forms/${form.slug}`}
-                        onClick={handleRegisterClick}
-                        className={`inline-flex items-center justify-center w-full py-2.5 px-4 bg-[#ff7a00] text-white text-sm font-semibold rounded-xl hover:bg-[#e06c00] transition cursor-pointer ${
-                          isAr ? 'space-x-reverse space-x-2' : 'space-x-2'
-                        }`}
-                      >
-                        <span>{isAr ? 'سجل الآن' : 'Register Now'}</span>
-                        <FiArrowRight className={`text-lg transition-transform ${isAr ? 'rotate-180' : ''}`} />
-                      </Link>
-                    </div>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-center text-gray-400 py-12 text-sm" dir={isAr ? 'rtl' : 'ltr'}>
-            {isAr ? 'لا توجد ورش أو دورات منشورة للتسجيل في الوقت الحالي' : 'No published workshops available at the moment.'}
-          </div>
+        {status === 'ready' && count > 0 && (
+          <>
+            <Featured form={featured} lang={lang} isAr={isAr} />
+            {rest.length > 0 && (
+              <div className="mt-10">
+                {rest.length + 1 >= SEARCH_FROM && (
+                  <label className="workshop-search">
+                    <FiSearch aria-hidden="true" />
+                    <span className="sr-only">{isAr ? 'ابحث في الورش' : 'Search workshops'}</span>
+                    <input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder={isAr ? 'ابحث باسم الورشة أو موضوعها' : 'Search by workshop name or topic'} />
+                  </label>
+                )}
+                <ul className="workshop-rows">
+                  {filtered.map((form) => <Row key={form.id ?? form.slug} form={form} index={rest.indexOf(form)} lang={lang} isAr={isAr} />)}
+                </ul>
+                {filtered.length === 0 && <p className="text-brand-gray text-sm py-6" role="status">{isAr ? 'لا توجد ورش تطابق بحثك.' : 'No workshops match your search.'}</p>}
+              </div>
+            )}
+            <JoinSteps isAr={isAr} />
+          </>
         )}
       </div>
-    </div>
+    </section>
   );
 };
 
