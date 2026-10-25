@@ -4,7 +4,7 @@ import { LanguageContext } from '../LanguageContext';
 import { HiMenu, HiX } from 'react-icons/hi';
 import SectionLink from './SectionLink';
 
-const SECTION_IDS = ['home', 'about', 'workshops', 'services', 'stories', 'posts'];
+const SECTION_IDS = ['home', 'workshops', 'services', 'stories', 'posts'];
 
 // خارج الرئيسية: الرابط النشط يُستنتج من المسار (صفحة مقال ← المنشورات، صفحة تسجيل ورشة ← ورش العمل)
 const sectionForRoute = (pathname) => {
@@ -31,11 +31,10 @@ function Navbar() {
     const check = () => {
       raf = 0;
       const journey = document.querySelector('.manara-journey');
-      const hero = document.getElementById('home');
-      // يختفي بعد أن يغادر معظم الواجهة الشاشة (الثلث الأخير منها ما زال ظاهراً)، ويعود بعد آخر فصل
-      setHidden(Boolean(journey && hero)
-        && hero.getBoundingClientRect().bottom < window.innerHeight * 0.35
-        && journey.getBoundingClientRect().bottom > 96);
+      // يختفي مع بداية ذوبان الواجهة في الحكاية (ربع شاشة من التمرير)، ويعود حين يبدأ قسم الورش بالصعود فوق مشهد الختام
+      setHidden(Boolean(journey)
+        && window.scrollY > window.innerHeight * 0.25
+        && journey.getBoundingClientRect().bottom > window.innerHeight * 1.1);
     };
     const schedule = () => { if (!raf) raf = requestAnimationFrame(check); };
     check();
@@ -52,7 +51,6 @@ function Navbar() {
   // مصفوفة الروابط لتسهيل تكرارها وتحديد حالتها النشطة
   const navLinks = [
     { id: 'home', label: isAr ? 'الرئيسية' : (t.home || 'Home') },
-    { id: 'about', label: isAr ? 'من نحن' : (t.about || 'About') },
     { id: 'workshops', label: isAr ? 'ورش العمل' : 'Workshops' },
     { id: 'services', label: isAr ? 'الخدمات' : (t.services || 'Services') },
     { id: 'stories', label: isAr ? 'أصوات من الميدان' : 'Field Voices' },

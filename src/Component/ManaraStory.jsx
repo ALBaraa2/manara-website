@@ -66,9 +66,8 @@ function Visual({ v, w, copy }) {
 // الفصل: عنوان ثابت، ثم مشاهد تتبدّل داخل البطاقة. tone يمنح كل فصل طابعه البصري.
 export default function ManaraStory({ copy }) {
   return <div className="manara-chapters">
-    <div className="manara-entry" aria-hidden="true"><span>{copy.label}</span><span>↓</span></div>
-    {copy.chapters.map((chapter) => (
-      <StoryChapter key={chapter.id} id={chapter.id} tone={chapter.tone} beats={chapter.beats.length} layoutKey={chapter.title}>
+    {copy.chapters.map((chapter, index) => (
+      <StoryChapter key={chapter.id} id={chapter.id} tone={chapter.tone} beats={chapter.beats.length} layoutKey={chapter.title} entry={index === 0}>
         <ClarityGroup as="header" strings={[chapter.title]} className="manara-chapter-head">{(w) => <>
           <h2 id={`${chapter.id}-title`}>{w(chapter.title)}</h2>
         </>}</ClarityGroup>

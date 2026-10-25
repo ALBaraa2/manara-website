@@ -53,9 +53,17 @@ const BEAM_PERIOD = 14; // ثوانٍ لكل دورة كاملة
 const OMEGA = (Math.PI * 2) / BEAM_PERIOD;
 const IGNITE_AT = 3.0; // لحظة انطلاق الحزمة بعد بدء الدخول
 const FINAL_T = 60; // حالة "مكتملة" تُستخدم عند تقليل الحركة
+const INTRO_END = 4.6; // نهاية الافتتاح: هبوط الكاميرا (3.8) واشتعال المصباح وانطلاق الحزمة (IGNITE_AT + 1.3)
+const smooth01 = (x) => { const v = Math.max(0, Math.min(1, x)); return v * v * (3 - 2 * v); };
 const BEAM_LENGTH = 30;
 const BEAM_RADIUS = 2.4;
 const BEAM_TILT = 0.035; // ميل الحزمة نحو الأسفل (راديان)
+// ختام الحكاية: الكاميرا تبتعد عن المصباح لتكشف المدينة (مضاعف مسافة الراحة وارتفاع إضافي)، وتتسع الحزمة وتمتد
+// فتصل إلى المدينة كلها، ثم يتسلّم القسم التالي الشاشة
+const OUTRO_DISTANCE = 1.5;
+const OUTRO_RISE = 1.4;
+const OUTRO_ANCHOR_Y = 0.3; // موضع المصباح الرأسي في اللقطة الواسعة
+const OUTRO_BEAM = { length: 0.45, spread: 0.9 };
 
 const clamp01 = (v) => Math.min(Math.max(v, 0), 1);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -831,6 +839,10 @@ export function createHeroScene(container, { mirrored = false, reducedMotion = f
   const startOffset = new Vector3();
   const tmp = new Vector3();
   const tmpTarget = new Vector3();
+  const closePos = new Vector3();
+  const closeTarget = new Vector3();
+  const widePos = new Vector3();
+  const lampPoint = new Vector3();
   let elapsed = 0;
   let started = false;
   // زاوية بداية ثابتة للحزمة في العالم (لا تقفز عند تبديل اللغة)
@@ -839,8 +851,9 @@ export function createHeroScene(container, { mirrored = false, reducedMotion = f
   function update(t) {
     const story = storyState(current.scroll);
     const zoom = reducedMotion ? (current.scroll > 0.8 ? 1 : 0) : story.zoom;
+    // مع تقليل الحركة لا تتحرك الكاميرا في الختام: يبقى المشهد ثابتاً ويتسلّمه القسم التالي بالتدرّج وحده
+    const pull = reducedMotion ? 0 : story.pull;
     const clock = t; // الزمن الحقيقي: يبقي دوران الحزمة مستمراً بعد مغادرة الواجهة
-    if (current.scroll >= 0.95) t = FINAL_T;
     const k = (a, b) => clamp01((t - a) / (b - a));
 
     // الكاميرا: هبوط سينمائي من الأعلى والخلف إلى وضع الراحة
@@ -848,15 +861,23 @@ export function createHeroScene(container, { mirrored = false, reducedMotion = f
     stepSide();
     startOffset.set(-sideNow * 7, 7.5, 14);
     // الكاميرا ثابتة أمام المؤشر؛ يبقى انجراف بطيء جداً والارتفاع مع التمرير
-    const drift = reducedMotion ? 0 : fly;
+    const drift = reducedMotion ? 0 : fly * (1 - story.pull);
     tmp.copy(rest.pos).addScaledVector(startOffset, 1 - fly);
     tmp.x += Math.sin(t * 0.11) * 0.45 * drift;
     tmp.y += Math.sin(t * 0.16) * 0.18 * drift;
 
     tmpTarget.copy(rest.target);
     tmpTarget.y += (1 - fly) * 2.5;
-    tmp.lerp(new Vector3(0, LAMP_Y + 0.12, isMobile() ? 8.5 : 5.8), zoom);
-    tmpTarget.lerp(new Vector3(0, LAMP_Y, 0), zoom);
+    // اللقطة الواسعة (الختام) تُشتق من وضع الراحة نفسه، فتبقى المنارة في جهتها وتتغير اللغة كما في الواجهة
+    widePos.copy(tmp);
+    widePos.z *= OUTRO_DISTANCE;
+    widePos.y += OUTRO_RISE;
+    tmp.lerp(closePos.set(0, LAMP_Y + 0.12, isMobile() ? 8.5 : 5.8), zoom);
+    tmpTarget.lerp(closeTarget.set(0, LAMP_Y, 0), zoom);
+    if (pull > 0) {
+      tmp.lerp(widePos, pull);
+      tmpTarget.y = lerp(tmpTarget.y, LAMP_Y * 0.55, pull);
+    }
     // زاوية الرؤية بحسب اللغة (على الهاتف المنارة في الوسط للغتين، فلا دوران)
     const yaw = isMobile() ? 0 : -SIDE_YAW * sideNow;
     orbit(tmp, yaw);
@@ -865,11 +886,11 @@ export function createHeroScene(container, { mirrored = false, reducedMotion = f
     camera.lookAt(tmpTarget);
     camera.clearViewOffset();
     camera.updateMatrixWorld();
-    const lampNdc = new Vector3(0, LAMP_Y, 0).project(camera);
+    const lampNdc = lampPoint.set(0, LAMP_Y, 0).project(camera);
     const mobile = isMobile();
     const anchorX = mobile ? 0.5 : 0.5 - 0.25 * sideNow;
     updateHeroOffset();
-    const anchorY = mobile ? 0.29 : 0.43;
+    const anchorY = lerp(mobile ? 0.29 : 0.43, OUTRO_ANCHOR_Y, pull);
     camera.setViewOffset(width, height,
       lerp(heroOffset.x, ((lampNdc.x + 1) / 2 - anchorX) * width, zoom),
       lerp(heroOffset.y, ((1 - lampNdc.y) / 2 - anchorY) * height, zoom), width, height);
@@ -892,8 +913,10 @@ export function createHeroScene(container, { mirrored = false, reducedMotion = f
     sky.material.uniforms.uHorizon.value.copy(heroHorizon).lerp(storyBackground, zoom);
     sky.material.uniforms.uZenith.value.copy(palette.night).lerp(storyBackground, zoom);
     fog.color.copy(heroHorizon).lerp(storyBackground, zoom);
-    sharedUniforms.uCityLight.value = lerp(1, story.light, zoom);
-    fog.density = lerp(0.95 / (rest.pos.z + 58), 0.065, zoom);
+    // العالم يبقى حاضراً خلف بطاقات الحكاية: ضباب أخف عند اللقطة القريبة، وبعض نوافذ المدينة تبقى مضاءة
+    // حتى في الفصول المعتمة (كانت تنطفئ كلها ويختفي الأفق، فيبدو الفصل الأول مكاناً آخر)
+    sharedUniforms.uCityLight.value = lerp(1, Math.max(story.light, 0.35), zoom);
+    fog.density = lerp(lerp(0.95 / (rest.pos.z + 58), 0.038, zoom), 0.95 / (rest.pos.z * OUTRO_DISTANCE + 58), pull);
     sharedUniforms.uFogDensity.value = fog.density;
     sea.material.uniforms.uLampLevel.value = lamp;
 
@@ -904,6 +927,7 @@ export function createHeroScene(container, { mirrored = false, reducedMotion = f
     // الحزمة تدور بالزمن فقط وبالسرعة نفسها دائماً؛ التمرير لا يغيّر زاويتها
     const angle = reducedMotion ? sweepStart : sweepStart + sweep;
     beams.rotation.y = angle;
+    beams.scale.set(1 + OUTRO_BEAM.length * pull, 1 + OUTRO_BEAM.spread * pull, 1 + OUTRO_BEAM.spread * pull);
     beamMaterial.uniforms.uStrength.value = beamIn;
     sharedUniforms.uBeamAngle.value = angle;
     sharedUniforms.uBeamStrength.value = beamIn;
@@ -983,6 +1007,12 @@ export function createHeroScene(container, { mirrored = false, reducedMotion = f
     const dt = Math.min((now - last) / 1000, 0.05); // لا قفزات بعد العودة لتبويب مخفي
     last = now;
     if (started) elapsed += dt;
+    // من يبدأ التمرير قبل انتهاء الافتتاح (هبوط الكاميرا، نهوض المنارة، اشتعال المصباح) يُسرّعه التمرير
+    // بسلاسة نحو نهايته، فيصل إليها مع وصول الكاميرا إلى الفصل الأول. الزمن لا يعود للخلف أبداً، فالرجوع
+    // للأعلى لا يعيد الافتتاح (كان يقفز سابقاً إلى الحالة النهائية دفعة واحدة عند 0.95 من التمرير).
+    if (started && elapsed < INTRO_END && current.scroll > 0) {
+      elapsed += (INTRO_END - elapsed) * Math.min(1, dt * 6 * smooth01(current.scroll / 0.9));
+    }
     update(elapsed);
     renderer.render(scene, camera);
     reportBeam(beams.rotation.y, beamMaterial.uniforms.uStrength.value);

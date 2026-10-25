@@ -5,7 +5,7 @@ import HeroScene from './HeroScene';
 import StoryFallback from './StoryFallback';
 import ManaraStory from './ManaraStory';
 import { manaraStory } from '../content/manaraStory';
-import { storyState, progressAt } from '../lib/storyTimeline';
+import { storyState, progressAt, outroAt, OUTRO_AT } from '../lib/storyTimeline';
 
 const EASE = [0.22, 1, 0.36, 1];
 const LG = 1024;
@@ -26,12 +26,21 @@ function HeroSection({ ready = true }) {
     const root = sectionRef.current;
     let stops = [0];
     let travel = 1;
-    const update = () => journey.set(progressAt(scrollYProgress.get() * travel, stops));
+    let release = 1;
+    // الفصول (0..4) ثم الختام (4..5): يبدأ حين تتحرر بطاقة الفصل الأخير وينتهي حين يفكّ المشهد تثبيته
+    const update = () => {
+      const offset = scrollYProgress.get() * travel;
+      journey.set(Math.min(progressAt(offset, stops), OUTRO_AT) + outroAt(offset, release, travel));
+    };
     const measure = () => {
       const top = root.getBoundingClientRect().top;
       travel = Math.max(1, root.offsetHeight - window.innerHeight);
+      // محطة كل فصل: لحظة بلوغ الكاميرا والضوء حالته. الافتراضي قبيل تثبيت بطاقته بـ10% من الشاشة؛
+      // الفصل الأول يحدد محطته (data-story-stop) لأنه يبدأ متداخلاً مع الواجهة ويظهر تدريجياً
       stops = [0, ...Array.from(root.querySelectorAll('[data-story-chapter]'), el =>
-        el.getBoundingClientRect().top - top - window.innerHeight * 0.1)];
+        el.getBoundingClientRect().top - top + window.innerHeight * Number(el.dataset.storyStop ?? -0.1))];
+      const chapters = root.querySelectorAll('[data-story-chapter]');
+      release = chapters.length ? chapters[chapters.length - 1].getBoundingClientRect().bottom - top - window.innerHeight : travel;
       update();
     };
     const observer = new ResizeObserver(measure);
@@ -42,8 +51,15 @@ function HeroSection({ ready = true }) {
     return () => { observer.disconnect(); unsubscribe(); window.removeEventListener('resize', measure); };
   }, [journey, scrollYProgress, lang]);
   const background = useTransform(journey, v => `color-mix(in srgb-linear, var(--color-brand-story-dark), var(--color-story-lit) ${storyState(v).light * 100}%)`);
-  const textY = useTransform(journey, (v) => (reduceMotion ? 0 : v * 70));
-  const textOpacity = useTransform(journey, [0, 0.7], [1, reduceMotion ? 1 : 0]);
+  // الانتقال من الواجهة إلى الحكاية على خط زمني واحد (journey) مع الكاميرا والضوء:
+  // نص الواجهة مثبّت في مكانه ويذوب (يتلاشى ويرتفع قليلاً ويتشوّش كأن الكاميرا تعبره) بين 0 و0.45 من الطريق إلى الفصل الأول،
+  // بينما تظهر بطاقة الفصل الأول في موضعها نفسه. مع تقليل الحركة يبقى التلاشي فقط.
+  const HERO_OUT = 0.45;
+  const textOpacity = useTransform(journey, [0, HERO_OUT], [1, 0]);
+  const textY = useTransform(journey, [0, HERO_OUT], [0, reduceMotion ? 0 : -40]);
+  const textScale = useTransform(journey, [0, HERO_OUT], [1, reduceMotion ? 1 : 1.05]);
+  const textBlur = useTransform(journey, [0.1, HERO_OUT], ['blur(0px)', reduceMotion ? 'blur(0px)' : 'blur(8px)']);
+  const cueOpacity = useTransform(journey, [0, 0.12], [1, 0]);
 
   // أين تقف المنارة على الشاشة: بجانب النص على الشاشات العريضة، وتحته على الضيقة
   // (القيم نسب من عرض/ارتفاع القسم؛ height = المسافة بين قاعدة المنارة ومصباحها)
@@ -108,10 +124,12 @@ function HeroSection({ ready = true }) {
 
       </div>
       <section id="home" className="manara-hero-content">
+      {/* مثبّت طوال ذوبان النص، فلا يجرّه التمرير خارج الشاشة */}
+      <div className="manara-hero-pin">
       <div className="relative z-10 container mx-auto px-6 md:px-10 min-h-[100svh] grid grid-cols-1 lg:grid-cols-12 lg:gap-8 pointer-events-none">
         <motion.div
           ref={textRef}
-          style={{ y: textY, opacity: textOpacity }}
+          style={{ y: textY, scale: textScale, opacity: textOpacity, filter: textBlur }}
           className="pointer-events-auto relative lg:col-span-7 self-start lg:self-center pt-28 pb-4 lg:pt-28 lg:pb-36 text-center lg:text-start"
         >
           <motion.div variants={container} initial={initial} animate={state} key={lang}>
@@ -139,9 +157,12 @@ function HeroSection({ ready = true }) {
         </motion.div>
       </div>
 
-      <p className="manara-scroll-cue">{copy.scroll} <span aria-hidden="true">↓</span></p>
+      <motion.p style={{ opacity: cueOpacity }} className="manara-scroll-cue">{copy.scroll} <span aria-hidden="true">↓</span></motion.p>
+      </div>
       </section>
       <ManaraStory copy={copy} />
+      {/* ختام الحكاية: المشهد يبقى مثبّتاً بعد رحيل آخر بطاقة، فتبتعد الكاميرا ويتسلّمه قسم الورش (انظر index.css) */}
+      <div className="manara-outro" aria-hidden="true" />
 
       {/* حبيبات خفيفة تمنح الصورة ملمساً سينمائياً */}
       <div className="hero-grain absolute inset-0 pointer-events-none" aria-hidden="true" />

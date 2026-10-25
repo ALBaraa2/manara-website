@@ -244,10 +244,15 @@ body {
 /* حكاية منارة: المشهد ثابت والمحتوى يتحرك بتمرير طبيعي */
 .manara-journey { color: var(--color-brand-tint); }
 .manara-stage { position: sticky; top: 0; height: 100svh; overflow: hidden; pointer-events: none; }
-.manara-hero-content { position: relative; margin-top: -100svh; min-height: 100svh; }
+/* الواجهة والفصل الأول مشهد واحد: نص الواجهة يبقى مثبّتاً --hero-hold من التمرير بينما يذوب،
+   ومسار الفصل الأول يبدأ متداخلاً معها عند --entry-at فتثبت بطاقته في موضع القراءة قبل أن تظهر.
+   (القيمتان تطابقان HERO_OUT في HeroSection وENTRY_SHIFT في StoryChapter) */
+.manara-journey { --hero-hold: 40svh; --entry-at: 30svh; }
+.manara-hero-content { position: relative; margin-top: -100svh; height: calc(100svh + var(--hero-hold)); }
+.manara-hero-pin { position: sticky; top: 0; height: 100svh; }
+.manara-chapter--entry { margin-top: calc(var(--entry-at) - 100svh - var(--hero-hold)); }
 .manara-scroll-cue { position: absolute; bottom: 2rem; z-index: 10; font-size: .8rem; color: var(--color-brand-gray); }
 .manara-scroll-cue { inset-inline-start: 6%; display: flex; align-items: center; gap: 1rem; }
-.manara-entry { height: 55svh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; letter-spacing: .06em; color: var(--color-brand-gray); position: relative; }
 /* المسار أطول من الشاشة: البطاقة تثبت في مركز الشاشة (sticky) طوال مرحلة القراءة ثم تتحرر مع نهاية المسار.
    top يضبطه JS للبطاقات الأطول من الشاشة حتى تُقرأ كاملة. */
 .manara-chapter { position: relative; scroll-margin-top: 0; }
@@ -383,13 +388,11 @@ body {
   .manara-chapter-copy { width: 100%; max-width: 650px; margin-inline: auto; padding: 1.5rem; background: linear-gradient(180deg, color-mix(in srgb, var(--story-background) 92%, transparent), var(--story-background)); border-radius: 1rem; }
   .manara-chapter h2 { font-size: clamp(1.8rem, 6vw, 2.7rem); }
   .manara-beat-text { font-size: 1rem; }
-  .manara-entry { height: 35svh; }
-  .manara-fallback-detail, [dir="ltr"] .manara-fallback-detail { width: min(44vw, 230px); left: 50%; right: auto; margin-left: max(-22vw, -115px); top: 12%; }
+    .manara-fallback-detail, [dir="ltr"] .manara-fallback-detail { width: min(44vw, 230px); left: 50%; right: auto; margin-left: max(-22vw, -115px); top: 12%; }
   .manara-scroll-cue { font-size: .65rem; bottom: 1rem; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .manara-entry { height: 15svh; }
-  .manara-journey *, .manara-journey *::before, .manara-journey *::after { animation: none !important; transition: none !important; }
+    .manara-journey *, .manara-journey *::before, .manara-journey *::after { animation: none !important; transition: none !important; }
 }
 /* يطابق مزج ألوان السماء في Three.js ضمن فضاء الألوان الخطي. */
 .manara-journey { --color-story-lit: color-mix(in srgb-linear, var(--color-brand-purple-dark), var(--color-brand-purple) 45%); }
@@ -568,6 +571,38 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .skeleton-block { animation: none; }
   .workshop-row::before { transition: none; }
+}
+
+/* ---------- ختام الحكاية: من المنارة إلى الفرص ----------
+   بعد رحيل بطاقة الفصل الأخير يبقى المشهد مثبّتاً --story-outro من التمرير: تبتعد الكاميرا وتتسع الحزمة (HeroSection ← heroScene).
+   وفي آخر --story-overlap منه يصعد قسم الورش فوق المشهد المضاء بتدرّج يبدأ شفافاً ويصير بنفسجي القسم نفسه، فلا يُقطع المشهد
+   بحدّ حاد: الفرص تنبثق من الضوء الذي كانت المنارة ترسله. (يتبع القسمُ المشهدَ مباشرة في Home.) */
+:root { --story-outro: 140svh; --story-overlap: 50svh; } /* على الجذر: يقرؤهما قسم الورش (أخ للمشهد لا ابن له) */
+.manara-outro { height: var(--story-outro); }
+.manara-journey + .workshops-section,
+[dir="rtl"] .manara-journey + .workshops-section {
+  --dawn: var(--color-brand-purple-dark);
+  --glow: color-mix(in srgb, var(--color-brand-purple) 70%, transparent);
+  z-index: 1;
+  margin-top: calc(var(--story-overlap) * -1);
+  /* العنوان يبدأ حيث يكتمل التدرّج تقريباً: فلا يُكتب نص فوق المشهد، وتبقى القفزة إلى #workshops على خلفية مصمتة */
+  padding-top: calc(var(--story-overlap) * .8 + 6rem);
+  scroll-margin-top: calc(var(--story-overlap) * -.8); /* سالب: يهبط العرض داخل القسم عند اكتمال التدرّج */
+  background:
+    radial-gradient(ellipse 60% 45% at 85% var(--story-overlap), var(--glow), transparent 70%),
+    linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--dawn) 22%, transparent) 22%, color-mix(in srgb, var(--dawn) 60%, transparent) 50%,
+      color-mix(in srgb, var(--dawn) 92%, transparent) 78%, var(--dawn) 100%) 0 0 / 100% var(--story-overlap) no-repeat,
+    linear-gradient(var(--dawn), var(--dawn)) 0 var(--story-overlap) / 100% 100% no-repeat;
+}
+[dir="rtl"] .manara-journey + .workshops-section {
+  background:
+    radial-gradient(ellipse 60% 45% at 15% var(--story-overlap), var(--glow), transparent 70%),
+    linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--dawn) 22%, transparent) 22%, color-mix(in srgb, var(--dawn) 60%, transparent) 50%,
+      color-mix(in srgb, var(--dawn) 92%, transparent) 78%, var(--dawn) 100%) 0 0 / 100% var(--story-overlap) no-repeat,
+    linear-gradient(var(--dawn), var(--dawn)) 0 var(--story-overlap) / 100% 100% no-repeat;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --story-outro: 90svh; }
 }
 
 /* ---------- الخدمات: مستكشف ---------- */

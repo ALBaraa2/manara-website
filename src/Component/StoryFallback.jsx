@@ -8,7 +8,7 @@ export default function StoryFallback({ ready, isAr, progress }) {
   const reduced = useReducedMotion();
   const heroOpacity = useTransform(progress, [0, 0.8], [1, 0]);
   const opacity = useTransform(progress, [0.2, 0.85], [0, 1]);
-  const scale = useTransform(progress, v => reduced ? 1 : 0.8 + storyState(v).zoom * 0.2);
+  const scale = useTransform(progress, v => { const s = storyState(v); return reduced ? 1 : (0.8 + s.zoom * 0.2) * (1 - s.pull * 0.22); });
   const light = useTransform(progress, v => storyState(v).light);
   return <div aria-hidden="true" className="absolute inset-0 pointer-events-none">
     <motion.div className="absolute inset-0" style={{ opacity: heroOpacity }}><HeroFallback ready={ready} isAr={isAr} /></motion.div>

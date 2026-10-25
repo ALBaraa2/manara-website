@@ -44,11 +44,18 @@ const beatStart = (i) => 0.1 + i * BEAT;
 const HOLD = 0.55; // بقاء المشهد الأخير مقروءاً قبل تحرّر البطاقة
 const dwellFor = (beats) => beatStart(beats - 1) + 0.3 + HOLD;
 
+// الفصل الأول «يولد» من الواجهة: يبدأ مساره متداخلاً معها (CSS: .manara-chapter--entry) فتثبت بطاقته في موضع
+// القراءة قبل أن تظهر، ثم تظهر في مكانها بينما تذوب نصوص الواجهة وتتقدّم الكاميرا — بدل أن تنزلق من أسفل الشاشة.
+// ENTRY_SHIFT يؤخّر خط الفصل الزمني بالمقدار نفسه، وENTRY_STOP يحدد متى يبلغ خط القصة المشترك (الكاميرا والضوء)
+// حالة هذا الفصل (يُقرأ في HeroSection). كلها بوحدات ارتفاع الشاشة من بداية مسار الفصل.
+const ENTRY_SHIFT = 0.3;
+const ENTRY_STOP = 0.6;
+
 // فصل مثبّت: المسار (section) أطول من الشاشة، والبطاقة داخله sticky فتبقى ثابتة في مكان القراءة.
 // staged: العنوان ثابت، والمشاهد تتبدّل داخل البطاقة بالتمرير (تتراكب في خلية واحدة بارتفاع أطولها فلا يتغير حجم البطاقة).
 // flow: حين لا تتسع البطاقة للشاشة (هواتف صغيرة) أو مع تقليل الحركة، تُعرض المشاهد متتالية بشكل عادي.
 // كل الحالات مشتقة من موضع التمرير، فالرجوع للأعلى يعكسها تماماً.
-export default function StoryChapter({ id, tone, beats, layoutKey, children }) {
+export default function StoryChapter({ id, tone, beats, layoutKey, entry = false, children }) {
   const track = useRef(null);
   const pin = useRef(null);
   const copy = useRef(null);
@@ -99,7 +106,8 @@ export default function StoryChapter({ id, tone, beats, layoutKey, children }) {
         if (!staged) card.classList.remove('is-staged');
       }
       const vh = window.innerHeight;
-      dwell.current.style.height = `${Math.round((staged ? dwellFor(beats) : reduced ? 0.3 : 0.35) * vh)}px`;
+      const extra = entry ? ENTRY_SHIFT : 0;
+      dwell.current.style.height = `${Math.round(((staged ? dwellFor(beats) : reduced ? 0.3 : 0.35) + extra) * vh)}px`;
       if (!staged) groups.forEach(g => { if (g.opacity !== '') { g.opacity = ''; g.el.style.opacity = ''; } });
     };
     // بطاقة أطول من الشاشة (وضع flow): يتحرّك المثبّت للأعلى بمقدار الزيادة فتُقرأ كاملة دون تمرير داخلي.
@@ -109,12 +117,21 @@ export default function StoryChapter({ id, tone, beats, layoutKey, children }) {
       if (next !== pinTop) { pinTop = next; pin.current.style.top = next; }
     };
 
+    // البطاقة الأولى مخفية فوق الواجهة، وتظهر تدريجياً (مع تقليل الحركة أيضاً: تلاشٍ فقط)
+    let shown = '';
+    const fadeIn = (s) => {
+      if (!entry) return;
+      const value = clamp01((s + 0.05) / 0.2).toFixed(3);
+      if (value !== shown) { shown = value; card.style.opacity = value; }
+    };
+
     const paint = () => {
-      if (reduced) return;
       const vh = window.innerHeight;
       const rect = section.getBoundingClientRect();
+      fadeIn(-rect.top / vh);
+      if (reduced) return;
       const near = rect.top < vh * 1.6 && rect.bottom > -vh * 0.2;
-      const s = -rect.top / vh;
+      const s = -rect.top / vh - (entry ? ENTRY_SHIFT : 0);
       const last = beats - 1;
       let best = 0;
       let bestOpacity = -1;
@@ -147,7 +164,7 @@ export default function StoryChapter({ id, tone, beats, layoutKey, children }) {
       if (!staged) return;
       const beat = event.target.closest('[data-beat]');
       if (!beat) return;
-      const s = -section.getBoundingClientRect().top / window.innerHeight;
+      const s = -section.getBoundingClientRect().top / window.innerHeight - (entry ? ENTRY_SHIFT : 0);
       const target = beatStart(Number(beat.dataset.beat)) + 0.2;
       if (Math.abs(s - target) > BEAT / 2) {
         // instant: التمرير الناعم العام في الصفحة كان يترك المشهدين متراكبين أثناء الانتقال
@@ -169,11 +186,13 @@ export default function StoryChapter({ id, tone, beats, layoutKey, children }) {
       unsubscribe(); observer.disconnect();
       window.removeEventListener('resize', layout); card.removeEventListener('focusin', onFocus);
       groups.forEach(g => { g.el.classList.add('is-clear'); g.el.style.opacity = ''; });
+      card.style.opacity = '';
       card.classList.remove('is-staged');
     };
-  }, [reduced, scrollY, beats, layoutKey]);
+  }, [reduced, scrollY, beats, layoutKey, entry]);
 
-  return <section ref={track} id={id} data-story-chapter className={`manara-chapter manara-chapter--${tone}`} aria-labelledby={`${id}-title`}>
+  return <section ref={track} id={id} data-story-chapter data-story-stop={entry ? ENTRY_STOP : undefined}
+    className={`manara-chapter manara-chapter--${tone}${entry ? ' manara-chapter--entry' : ''}`} aria-labelledby={`${id}-title`}>
     <div ref={pin} className="manara-chapter-pin">
       <div ref={copy} className="manara-chapter-copy">{children}</div>
     </div>
