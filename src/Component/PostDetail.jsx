@@ -91,7 +91,7 @@ function PostDetail() {
 
       <main className="flex-1" dir={isAr ? 'rtl' : 'ltr'}>
         <header className="post-hero">
-          <div className="container mx-auto px-6 md:px-10 pt-32 pb-14">
+          <div className="container mx-auto px-6 md:px-10 pt-28 pb-6">
             <div className="max-w-3xl mx-auto">
               <Link to="/#posts" className="inline-flex items-center gap-2 text-brand-orange-light hover:text-white text-sm font-semibold transition-colors">
                 <BackIcon aria-hidden="true" />
@@ -112,10 +112,10 @@ function PostDetail() {
               )}
 
               {status === 'ready' && (
-                <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, ease: EASE }} className="pt-10">
+                <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, ease: EASE }} className="pt-6">
                   <Kicker tone="dark">{isAr ? 'من منارة' : 'From Manara'}</Kicker>
-                  <h1 className="mt-5 text-3xl md:text-5xl font-bold text-white leading-[1.3]" dir="auto">{title}</h1>
-                  <p className="mt-6 flex flex-wrap items-center gap-2 text-sm text-brand-gray">
+                  <h1 className="mt-3 text-2xl md:text-4xl font-bold text-white leading-[1.35]" dir="auto">{title}</h1>
+                  <p className="mt-4 flex flex-wrap items-center gap-2 text-sm text-brand-gray">
                     {postDate && <time dateTime={post.published_at}>{postDate}</time>}
                     {postDate && <span aria-hidden="true">·</span>}
                     <span>{readingTime(content, isAr)}</span>

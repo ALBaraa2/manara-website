@@ -96,12 +96,13 @@ function SuccessStories() {
                 transition={{ duration: 0.6, delay: index * 0.1 }}
                 className="relative bg-white/5 border border-white/10 p-8 rounded-[2rem] flex flex-col justify-between backdrop-blur-sm hover:border-brand-orange/60 transition-all group"
               >
-                {/* رقم القصة يثبت في اليمين دائماً أو اليسار حسب الرغبة، هنا جعلناه يثبت في اليمين (أو يتكيف مع اللغة باستخدام اليمين دائماً لثبات الشكل) */}
+                {/* رقم القصة ثابت في اليمين بكل اللغات */}
                 <span className="absolute top-6 right-6 text-4xl font-black text-white/10 select-none group-hover:text-brand-orange/30 transition-colors">
                   {storyNumber}
                 </span>
 
-                <p className={`text-white/90 leading-relaxed mb-8 relative z-10 ${isAr ? 'text-right' : 'text-left'}`} dir="auto">
+                {/* mt-10: النص يبدأ تحت الرقم، فالأسطر الممتدة لحافة البطاقة (كل أسطر العربية) لا تغطيه */}
+                <p className={`text-white/90 leading-relaxed mt-10 mb-8 relative z-10 ${isAr ? 'text-right' : 'text-left'}`} dir="auto">
                   "{quoteText}"
                 </p>
 

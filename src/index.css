@@ -714,14 +714,17 @@ body {
 
 /* ---------- التواصل: دعوة ونموذج ---------- */
 .contact-section { padding: 6rem 0; background: var(--color-brand-tint); }
-/* بطاقة الدعوة: سماء منارة ليلاً، يعبرها شعاع مرة واحدة عند ظهورها */
+/* بطاقة الدعوة: بنفسجي الهوية (كقسم أصوات من الميدان) يتدرّج إلى بنفسجي التذييل، مع وهج برتقالي خافت عند منبع الشعاع
+   الذي يعبرها مرة واحدة عند ظهورها */
 .contact-invite { position: relative; overflow: hidden; isolation: isolate; border-radius: 2rem; padding: 2.5rem;
-  background: radial-gradient(ellipse 80% 60% at 20% 0%, var(--color-brand-purple) 0%, var(--color-brand-purple-dark) 55%, var(--color-brand-night) 100%); }
+  background:
+    radial-gradient(ellipse 55% 40% at 15% 0%, color-mix(in srgb, var(--color-brand-orange) 22%, transparent), transparent 70%),
+    linear-gradient(160deg, var(--color-brand-purple) 0%, var(--color-brand-purple-dark) 100%); }
 .contact-invite-beam { position: absolute; inset: -30% -60%; z-index: -1; pointer-events: none;
   background: conic-gradient(from 230deg at 15% 0%, transparent 0deg, color-mix(in srgb, var(--color-brand-orange-light) 16%, transparent) 10deg, transparent 22deg);
   animation: contact-beam 2.6s cubic-bezier(.22, 1, .36, 1) .4s both; }
 @keyframes contact-beam { from { transform: rotate(-24deg); opacity: 0; } 40% { opacity: 1; } to { transform: rotate(0deg); opacity: .9; } }
-.contact-channel { display: flex; align-items: center; gap: .9rem; padding: .85rem 1rem; border-radius: 1rem; border: 1px solid var(--color-brand-line); background: rgb(255 255 255 / .04); }
+.contact-channel { display: flex; align-items: center; gap: .9rem; padding: .85rem 1rem; border-radius: 1rem; border: 1px solid rgb(255 255 255 / .1); background: rgb(255 255 255 / .04); }
 .contact-channel-icon { display: grid; place-items: center; width: 2.4rem; height: 2.4rem; border-radius: .8rem; flex: none; color: var(--color-brand-orange-light); background: rgb(255 255 255 / .06); }
 .contact-channel-value { display: block; margin-top: .1rem; color: #fff; font-weight: 600; font-size: .95rem; overflow-wrap: anywhere; }
 a.contact-channel-value:hover { color: var(--color-brand-orange-light); }
@@ -773,3 +776,167 @@ a.contact-channel-value:hover { color: var(--color-brand-orange-light); }
 .state-retry { display: inline-flex; align-items: center; gap: .5rem; font-weight: 700; font-size: .95rem; color: var(--color-brand-orange-light); transition: gap .25s ease, color .2s ease; }
 .state-retry:hover { gap: .8rem; color: #fff; }
 .state-retry:focus-visible { outline: 2px solid var(--color-brand-orange-light); outline-offset: 4px; border-radius: .5rem; }
+
+/* ---------- لحظات حقيقية: نافذة ← ملء الشاشة ← رزمة ← شريط (Activities.jsx) ----------
+   المسرح مثبّت (sticky) داخل مسار طويل؛ كل المواضع تُكتب من JavaScript حسب التمرير. المرحلة الأولى تُرسم على canvas بـ WebGL
+   (src/lib/apertureGL.js) بخلفية البنفسجي الداكن، ثم تتحول إلى سماء منارة الليلية مع وهج اللقطة الحالية. */
+.reel-section { position: relative; color: #fff; background: var(--color-brand-night); overflow-x: clip; }
+.reel-track { position: relative; }
+.reel-stage { position: sticky; top: 0; overflow: hidden; background: var(--color-brand-purple-dark); --M: clamp(16px, 5vw, 80px); }
+.reel-night { position: absolute; inset: 0; background: var(--color-brand-night); opacity: 0; overflow: hidden; }
+.reel-glow { position: absolute; inset: -15%; width: 130%; height: 130%; object-fit: cover; filter: blur(70px) saturate(1.15); opacity: .3; animation: reel-glow-in .8s ease both; }
+@keyframes reel-glow-in { from { opacity: 0; } to { opacity: .3; } }
+.reel-aperture { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.reel-aperture--fallback { overflow: hidden; }
+.reel-aperture--fallback img { position: absolute; max-width: none; }
+.reel-cue { position: absolute; inset: 0; pointer-events: none; font-size: .9rem; color: var(--color-brand-gray); }
+/* «من أنشطتنا» أعلى الشاشة تحت شريط التنقل، و«مرّر لتكتشفها» أسفلها — كلاهما في المنتصف */
+.reel-cue > .reel-label { position: absolute; inset-inline: 0; top: clamp(6rem, 15vh, 8.5rem); text-align: center; }
+.reel-cue > span { bottom: clamp(1.5rem, 7vh, 4rem); left: 50%; translate: -50% 0; white-space: nowrap; }
+/* السهم خارج عرض السطر، فيتوسط نص «مرّر لتكتشفها» تحت العنوان تماماً */
+.reel-cue > span { position: absolute; display: inline-block; }
+.reel-cue > span > svg { position: absolute; top: 50%; inset-inline-start: calc(100% + .4rem); translate: 0 -50%; }
+/* عنوان صغير بلا شعاع (نفس لون العناوين الصغيرة في الموقع) */
+.reel-label { font-size: .85rem; font-weight: 700; color: var(--color-brand-orange-light); }
+
+.reel-head { position: absolute; z-index: 30; top: clamp(5.75rem, 13vh, 8rem); inset-inline: var(--M); visibility: hidden; opacity: 0; }
+.reel-title { font-size: clamp(1.75rem, 3.4vw, 3rem); font-weight: 700; line-height: 1.15; }
+.reel-ribbon { display: flex; flex-wrap: wrap; gap: 0; margin-top: .9rem; border-bottom: 1px solid rgb(255 255 255 / .12); list-style: none; padding: 0; }
+.reel-ribbon li { padding: .35rem .8rem .45rem; font-size: .8rem; font-weight: 600; color: rgb(255 255 255 / .45); transition: background-color .3s ease, color .3s ease; }
+.reel-ribbon li.is-on { background: var(--color-brand-orange); color: #fff; }
+
+.reel-frames { position: absolute; inset: 0; margin: 0; padding: 0; list-style: none; }
+.reel-frame { position: absolute; left: 0; top: 0; will-change: transform; }
+.reel-frame:not(.reel-frame--lead) { visibility: hidden; opacity: 0; }
+.reel-frame-media { position: relative; display: block; width: 100%; height: 100%; border-radius: var(--radius, 14px); overflow: hidden; background: var(--color-brand-surface); cursor: zoom-in;
+  box-shadow: 0 30px 60px -30px rgb(0 0 0 / .8); }
+.reel-frame-media img, .reel-frame-media video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.reel-frame-media:focus-visible { outline: 2px solid var(--color-brand-orange-light); outline-offset: 3px; }
+.reel-play { position: absolute; inset-block-end: .75rem; inset-inline-start: .75rem; display: grid; place-items: center; width: 2.4rem; height: 2.4rem; border-radius: 999px;
+  background: var(--color-brand-orange); font-size: .95rem; padding-inline-start: 2px; }
+/* اللقطة الحالية: الصورة نفسها تكبر قليلاً وتضيء ويظهر تحتها توهج برتقالي خافت، والبقية تخفت وتضبب قليلاً (عمق ميدان).
+   --focus ينتقل بنعومة (مسجّل بـ @property) عند تبدّل اللقطة الحالية، و--meta (من JS) يلغي التأثير والصورة تملأ الشاشة؛
+   بدون دعم @property يتبدّل التأثير فوراً دون انتقال. scale منفصل عن transform الذي يحرّك به JS اللقطة. */
+@property --focus { syntax: '<number>'; inherits: true; initial-value: 0; }
+.reel-frames .reel-frame { --focus: 0; --lift: calc(var(--focus) * var(--meta, 1)); transition: --focus .6s cubic-bezier(.22, 1, .36, 1); }
+.reel-frames .reel-frame.is-current { --focus: 1; z-index: 20 !important; } /* فوق جارتيها حين تكبر */
+.reel-frames .reel-frame-media {
+  scale: calc(1 + .05 * var(--lift));
+  filter: brightness(calc(.8 + .2 * var(--focus))) saturate(calc(.85 + .15 * var(--focus))) blur(calc((1 - var(--focus)) * var(--soft, 3px)));
+  box-shadow: 0 30px 60px -30px rgb(0 0 0 / .8), 0 26px 60px -26px rgb(243 115 33 / calc(.55 * var(--lift)));
+}
+/* زوايا المُعايِن والوسم: على اللقطة الحالية فقط؛ داخل الإطار حين يملأ الشاشة (--meta = 0) وخارجه في الشريط.
+   الزوايا تبتعد مع تكبير الصورة (2.5% من عرضها وارتفاعها في كل جهة) فتبقى خارجها */
+.reel-corners { position: absolute; inset: calc(14px - 24px * var(--meta, 1) - 2.5% * var(--lift, 0)); pointer-events: none; opacity: 0; transition: opacity .3s ease; }
+.reel-corners i { position: absolute; width: 16px; height: 16px; border: 0 solid rgb(255 255 255 / .85); }
+.reel-corners i:nth-child(1) { top: 0; left: 0; border-top-width: 1.5px; border-left-width: 1.5px; }
+.reel-corners i:nth-child(2) { top: 0; right: 0; border-top-width: 1.5px; border-right-width: 1.5px; }
+.reel-corners i:nth-child(3) { bottom: 0; left: 0; border-bottom-width: 1.5px; border-left-width: 1.5px; }
+.reel-corners i:nth-child(4) { bottom: 0; right: 0; border-bottom-width: 1.5px; border-right-width: 1.5px; }
+/* اسم اللقطة تحتها يبتعد بقدر ما كبرت الصورة (2.5% من ارتفاعها)؛ الوسم فوقها يبقى مكانه حتى لا يلتصق بشريط الأنشطة */
+.reel-tag { position: absolute; top: calc(22px - 50px * var(--meta, 1)); inset-inline-end: calc(22px - 22px * var(--meta, 1)); padding: .15rem .55rem .25rem; border-radius: .25rem;
+  font-size: .72rem; font-weight: 700; white-space: nowrap; background: var(--color-brand-orange); color: #fff; opacity: 0; transition: opacity .3s ease; pointer-events: none; }
+/* زوايا اللقطة الأولى ووسمها وهي تملأ الشاشة، تتلاشى حين تستقر في الشريط فيتسلّمها المُعايِن الثابت في المكان نفسه */
+.reel-frame--lead .reel-corners, .reel-frame--lead .reel-tag { opacity: calc(1 - var(--meta, 1)); transition: none; }
+/* المُعايِن: ثابت في وسط الشاشة والشريط يمر تحته؛ عرضه عرض اللقطة الحالية، والزوايا خارج الصورة المكبّرة (--lift = 1) */
+.reel-finder { position: absolute; z-index: 25; left: 50%; translate: -50% 0; /* left يضبطه JS */ visibility: hidden; opacity: 0; pointer-events: none; --meta: 1; --lift: 1; }
+.reel-finder .reel-corners, .reel-finder .reel-tag { opacity: 1; transition: none; }
+/* اللقطة الأولى حين تملأ الشاشة: الزوايا والوسم تحت شريط التنقل الثابت */
+.reel-frame--lead .reel-corners { top: calc(96px * (1 - var(--meta, 1)) - 10px * var(--meta, 1) - 2.5% * var(--lift, 0)); }
+.reel-frame--lead .reel-tag { top: calc(108px * (1 - var(--meta, 1)) - 28px * var(--meta, 1)); }
+.reel-caption { position: absolute; top: calc(100% + 2.5% * var(--lift, 0) + .6rem - 3rem * (1 - var(--meta, 1))); inset-inline-start: calc(22px * (1 - var(--meta, 1))); display: flex; gap: .55rem; align-items: baseline;
+  font-size: .78rem; font-weight: 600; color: var(--color-brand-orange-light); white-space: nowrap; opacity: var(--meta, 1); pointer-events: none; }
+.reel-frame--lead .reel-caption { opacity: 1; }
+
+.reel-foot { position: absolute; z-index: 30; bottom: clamp(1rem, 4vh, 2rem); inset-inline: var(--M); display: flex; align-items: baseline; justify-content: space-between; gap: 1rem;
+  padding-top: .9rem; border-top: 1px solid rgb(255 255 255 / .12); visibility: hidden; opacity: 0; }
+.reel-foot-name { font-size: clamp(1.1rem, 2vw, 1.6rem); font-weight: 700; }
+.reel-foot-link { display: inline-flex; align-items: center; gap: .4rem; font-size: .85rem; font-weight: 700; color: var(--color-brand-orange-light); white-space: nowrap; }
+.reel-foot-link:hover { color: #fff; }
+.reel-foot-link:focus-visible { outline: 2px solid var(--color-brand-orange-light); outline-offset: 3px; border-radius: .25rem; }
+
+/* مع تقليل الحركة: شريط ثابت قابل للتمرير الأفقي */
+.reel-static { padding: 5rem 0 1rem; }
+.reel-static .reel-ribbon { margin-bottom: 2rem; }
+.reel-static-strip { display: flex; gap: 1rem; overflow-x: auto; padding: 0 var(--M, 1rem) 2.5rem; scroll-snap-type: x mandatory; list-style: none; margin: 0; --M: clamp(16px, 5vw, 80px); }
+.reel-frame.is-static { position: relative; flex: none; height: clamp(15rem, 42vh, 26rem); aspect-ratio: var(--ar); scroll-snap-align: start; visibility: visible; opacity: 1; will-change: auto; }
+
+/* المرحلة الثانية: بقية اللقطات (تكوين تحريري غير متماثل يكمل ترقيم الشريط) ثم الأفلام؛ تنتهي ببنفسجي «أصوات من الميدان» */
+.reel-more { padding: clamp(3rem, 7vw, 6rem) 0 clamp(4rem, 8vw, 7rem); background: linear-gradient(180deg, var(--color-brand-night) 0%, var(--color-brand-night) 55%, var(--color-brand-purple) 100%); }
+.reel-more-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 3.5rem 1.5rem; align-items: start; list-style: none; margin: 0; padding: 0; }
+.reel-more-item { position: relative; padding-bottom: 1.8rem; }
+.reel-more-item .reel-frame-media { aspect-ratio: var(--ar); }
+.reel-more-item .reel-caption { top: auto; bottom: 0; inset-inline-start: 0; opacity: 1; white-space: normal; }
+/* إيقاع من خمس لقطات يتكرر: كبيرة وطويلة، ثم ثلاث متدرجة الارتفاع */
+.reel-more-item:nth-child(5n + 1) { grid-column: 1 / span 7; }
+.reel-more-item:nth-child(5n + 2) { grid-column: 9 / span 4; margin-top: 4rem; }
+.reel-more-item:nth-child(5n + 3) { grid-column: 1 / span 5; }
+.reel-more-item:nth-child(5n + 4) { grid-column: 6 / span 3; margin-top: 3rem; }
+.reel-more-item:nth-child(5n) { grid-column: 9 / span 4; margin-top: 7rem; }
+.reel-more-item img { transition: transform .9s cubic-bezier(.22, 1, .36, 1); }
+.reel-more-item .reel-frame-media:hover img { transform: scale(1.03); }
+.reel-films { margin-top: clamp(3rem, 6vw, 5rem); padding-top: 1.5rem; border-top: 1px solid rgb(255 255 255 / .12); }
+.reel-films-label { font-size: .85rem; font-weight: 700; color: var(--color-brand-orange-light); margin-bottom: 1.25rem; }
+.reel-films ul { display: grid; grid-template-columns: repeat(5, minmax(0, 15rem)); gap: 1.25rem; list-style: none; margin: 0; padding: 0; }
+.reel-film { position: relative; display: block; width: 100%; aspect-ratio: 9 / 16; border-radius: 1rem; overflow: hidden; background: var(--color-brand-surface); cursor: pointer; }
+.reel-film img { width: 100%; height: 100%; object-fit: cover; transition: transform .9s cubic-bezier(.22, 1, .36, 1); }
+.reel-film:hover img { transform: scale(1.04); }
+.reel-film::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 50%, rgb(12 8 32 / .85)); }
+.reel-film-play { position: absolute; z-index: 1; top: 50%; left: 50%; translate: -50% -50%; display: grid; place-items: center; width: 3.25rem; height: 3.25rem; border-radius: 999px;
+  background: var(--color-brand-orange); font-size: 1.15rem; padding-inline-start: 3px; box-shadow: 0 0 0 8px color-mix(in srgb, var(--color-brand-orange) 25%, transparent); }
+.reel-film-meta { position: absolute; z-index: 1; inset-inline: .9rem; bottom: .8rem; display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; font-size: .8rem; text-align: start; }
+.reel-film-meta span { direction: ltr; color: var(--color-brand-gray); font-variant-numeric: tabular-nums; }
+.reel-film:focus-visible { outline: 2px solid var(--color-brand-orange-light); outline-offset: 3px; }
+@media (max-width: 767px) {
+  .reel-ribbon li { padding: .3rem .55rem .4rem; font-size: .7rem; }
+  .reel-frames { --soft: 2px; } /* لقطات أصغر: ضبابية أخف */
+  .reel-more-grid { grid-template-columns: minmax(0, 1fr); gap: 2.25rem; }
+  .reel-more-item { grid-column: auto !important; margin-top: 0 !important; }
+  .reel-more-item:nth-child(even) { width: 78%; justify-self: end; }
+  .reel-films ul { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem; }
+  .reel-film-meta { flex-direction: column; inset-inline: .5rem; bottom: .5rem; font-size: .7rem; }
+  .reel-film-play { width: 2.6rem; height: 2.6rem; font-size: .95rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reel-more-item img, .reel-film img { transition: none; }
+  .reel-glow { animation: none; }
+}
+
+/* العارض: <dialog> بملء الشاشة فوق كل شيء */
+.lightbox { width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; color: #fff; background: rgb(8 5 22 / .96); overscroll-behavior: contain; }
+.lightbox::backdrop { background: rgb(8 5 22 / .7); }
+.lightbox-layout { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; }
+.lightbox-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .9rem clamp(1rem, 3vw, 2rem); }
+.lightbox-title { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lightbox-count { font-size: .8rem; color: var(--color-brand-gray); }
+.lightbox-button { display: grid; place-items: center; flex: none; width: 2.75rem; height: 2.75rem; border-radius: 999px; font-size: 1.3rem; color: #fff; background: rgb(255 255 255 / .08);
+  transition: background-color .2s ease; }
+.lightbox-button:hover { background: rgb(255 255 255 / .16); }
+.lightbox-button:focus-visible, .lightbox-thumb:focus-visible { outline: 2px solid var(--color-brand-orange-light); outline-offset: 2px; }
+.lightbox-stage { position: relative; display: flex; align-items: center; justify-content: center; min-height: 0; padding: 0 clamp(.5rem, 5vw, 5rem); touch-action: pan-y; }
+/* flex لا grid: نسبة max-height في الوسائط تحتاج حاوية بارتفاع محدد، وإلا تفيض الصورة فوق الشرح والمصغّرات */
+.lightbox-frame { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; min-height: 0; }
+.lightbox-media { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; border-radius: .75rem; opacity: 0; transition: opacity .3s ease; background: #000; }
+.lightbox-frame.is-ready .lightbox-media { opacity: 1; }
+video.lightbox-media { opacity: 1; }
+.lightbox-spinner { position: absolute; width: 2rem; height: 2rem; border-radius: 50%; border: 2px solid rgb(255 255 255 / .2); border-top-color: var(--color-brand-orange-light); animation: contact-spin .8s linear infinite; }
+.lightbox-missing { display: flex; align-items: center; gap: .6rem; color: var(--color-brand-gray); }
+.lightbox-nav { position: absolute; z-index: 2; top: 50%; translate: 0 -50%; background: rgb(12 8 32 / .6); backdrop-filter: blur(6px); }
+.lightbox-nav--prev { inset-inline-start: clamp(.5rem, 1.5vw, 1.5rem); }
+.lightbox-nav--next { inset-inline-end: clamp(.5rem, 1.5vw, 1.5rem); }
+.lightbox-foot { padding: .75rem clamp(1rem, 3vw, 2rem) 1rem; }
+.lightbox-caption { text-align: center; font-size: .9rem; color: var(--color-brand-tint); min-height: 1.5em; }
+.lightbox-thumbs { display: flex; justify-content: center; gap: .5rem; margin-top: .75rem; overflow-x: auto; scrollbar-width: none; }
+.lightbox-thumb { position: relative; display: block; width: 3.5rem; height: 3.5rem; border-radius: .6rem; overflow: hidden; opacity: .5; transition: opacity .2s ease; box-shadow: inset 0 0 0 2px transparent; }
+.lightbox-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.lightbox-thumb:hover { opacity: .85; }
+.lightbox-thumb.is-current { opacity: 1; outline: 2px solid var(--color-brand-orange); outline-offset: 2px; }
+.lightbox-thumb-play { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(12 8 32 / .35); font-size: .9rem; }
+@media (max-width: 640px) {
+  .lightbox-stage { padding: 0; }
+  .lightbox-media { border-radius: 0; }
+  .lightbox-nav { display: none; } /* على الهاتف: السحب والمصغّرات */
+}
+@media (prefers-reduced-motion: reduce) {
+  .lightbox-media, .lightbox-thumb { transition: none; }
+}

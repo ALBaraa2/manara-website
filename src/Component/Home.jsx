@@ -6,6 +6,7 @@ import Services from './Services';
 import Contact from './Contact';
 import Footer from './Footer';
 import SuccessStories from './SuccessStories';
+import Activities from './Activities';
 import LatestPostsSection from './LatestPostsSection';
 import UserWorkshops from './UserWorkshops';
 import Splash from './Splash';
@@ -77,6 +78,7 @@ const Home = () => {
         <HeroSection ready={!isLoading} />
         <UserWorkshops />
         <Services />
+        <Activities />
         <SuccessStories />
         <LatestPostsSection />
         <Contact />

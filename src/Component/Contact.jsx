@@ -82,12 +82,12 @@ function Contact() {
     setTopic(key === 'general' ? null : key);
     if (key === 'service') setServiceLabel(label);
     if (state === 'sent' || state === 'failed') setState('idle');
-    setValues(v => {
-      if (v.message.trim() && v.message !== prefilled.current) return v;
-      const text = prefillFor(key, label);
-      prefilled.current = text;
-      return { ...v, message: text };
-    });
+    // القرار يُتخذ خارج دالة التحديث: React (StrictMode) يستدعيها مرتين، وكانت الثانية ترى prefilled محدَّثاً
+    // فتظن أن الزائر كتب النص بنفسه وتُبقي الاقتراح القديم
+    if (values.message.trim() && values.message !== prefilled.current) return;
+    const text = prefillFor(key, label);
+    prefilled.current = text;
+    setValues(v => ({ ...v, message: text }));
   };
 
   useEffect(() => {

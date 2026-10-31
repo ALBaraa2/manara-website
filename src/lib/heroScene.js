@@ -9,6 +9,7 @@ import {
   BoxGeometry,
   BufferGeometry,
   CanvasTexture,
+  CircleGeometry,
   Color,
   ConeGeometry,
   CylinderGeometry,
@@ -48,6 +49,8 @@ import { storyState } from './storyTimeline';
 // ---------- ثوابت المشهد ----------
 
 const LAMP_Y = 5.85; // ارتفاع مصباح المنارة
+const GALLERY_TOP = 5.57; // سطح الشرفة (أرضية غرفة المصباح)
+const OPTIC_BASE = LAMP_Y - 0.22; // أسفل العدسة الدوّارة
 const SHORE_Z = -30; // خط الشاطئ: البحر أمامه والمدينة خلفه
 const BEAM_PERIOD = 14; // ثوانٍ لكل دورة كاملة
 const OMEGA = (Math.PI * 2) / BEAM_PERIOD;
@@ -547,9 +550,21 @@ function buildLighthouse(palette) {
   add(new CylinderGeometry(0.8, 0.66, 0.14, 48), white, 5.5);
   const rail = add(new TorusGeometry(0.75, 0.022, 6, 48), accent, 5.78);
   rail.rotation.x = Math.PI / 2;
+  // قوائم الدرابزين: تحمل الحلقة فوق سطح الشرفة (أعلاه عند 5.57) بدل أن تطفو
+  const stanchion = new CylinderGeometry(0.014, 0.014, 5.78 - GALLERY_TOP, 6);
+  for (let i = 0; i < 16; i += 1) {
+    const a = (i / 16) * Math.PI * 2;
+    const post = add(stanchion, accent, (5.78 + GALLERY_TOP) / 2);
+    post.position.x = Math.cos(a) * 0.75;
+    post.position.z = Math.sin(a) * 0.75;
+  }
 
-  // غرفة المصباح: زجاج مضيء وأعمدة رفيعة
-  const glass = new MeshBasicMaterial({ color: '#ffe2c4', transparent: true, opacity: 0.92 });
+  // قاعدة ثابتة تحمل العدسة الدوّارة (العدسة نفسها في buildOptic)
+  const metal = new MeshStandardMaterial({ color: '#9a93ab', roughness: 0.35, metalness: 0.6 });
+  add(new CylinderGeometry(0.05, 0.09, OPTIC_BASE - GALLERY_TOP, 20), metal, (OPTIC_BASE + GALLERY_TOP) / 2);
+
+  // غرفة المصباح: زجاج مضيء شفاف بما يكفي لتظهر العدسة، وأعمدة رفيعة
+  const glass = new MeshBasicMaterial({ color: '#ffe2c4', transparent: true, opacity: 0.28, depthWrite: false });
   add(new CylinderGeometry(0.38, 0.38, 0.62, 24, 1, true), glass, LAMP_Y);
   for (let i = 0; i < 8; i += 1) {
     const a = (i / 8) * Math.PI * 2;
@@ -563,6 +578,137 @@ function buildLighthouse(palette) {
   add(new SphereGeometry(0.07, 16, 10), accent, 6.85);
 
   return { group, glass };
+}
+
+// نقش عدسة «عين الثور» (Fresnel): بؤرة ساطعة تحيط بها حلقات منشورية متناوبة تخفت نحو الحافة
+function bullseyeTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  const c = 64;
+  const core = ctx.createRadialGradient(c, c, 0, c, c, 64);
+  core.addColorStop(0, 'rgba(255,255,255,1)');
+  core.addColorStop(0.2, 'rgba(255,240,215,0.95)');
+  core.addColorStop(0.55, 'rgba(255,180,110,0.7)');
+  core.addColorStop(1, 'rgba(190,90,80,0.6)');
+  ctx.fillStyle = core;
+  ctx.beginPath();
+  ctx.arc(c, c, 63, 0, Math.PI * 2);
+  ctx.fill();
+  // الحلقات: حافة مضيئة وظل داخلي لكل حلقة، كما ينكسر الضوء في درجات العدسة
+  for (let r = 18; r < 62; r += 9) {
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(110,40,70,0.7)';
+    ctx.beginPath();
+    ctx.arc(c, c, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(255,250,235,0.9)';
+    ctx.beginPath();
+    ctx.arc(c, c, r + 2.5, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  return texture;
+}
+
+// الحلقات المنشورية الأفقية لجسم العدسة (أعلى وأسفل النطاق الأوسط)
+function prismTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 4;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  for (let y = 0; y < 64; y += 8) {
+    const band = ctx.createLinearGradient(0, y, 0, y + 8);
+    band.addColorStop(0, 'rgba(255,250,240,0.95)');
+    band.addColorStop(0.35, 'rgba(255,196,130,0.55)');
+    band.addColorStop(1, 'rgba(120,52,70,0.75)');
+    ctx.fillStyle = band;
+    ctx.fillRect(0, y, 4, 8);
+  }
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  return texture;
+}
+
+// الجهاز البصري الدوّار: مصدر ضوء ثابت في المركز تدور حوله «خلية نحل» زجاجية بعدستين متقابلتين.
+// كل عدسة تجمع الضوء في إحدى الحزمتين (المخروطان في buildBeams يتجهان نحو ±x)، فتدور المجموعة بزاوية الحزمة نفسها.
+function buildOptic(palette) {
+  const group = new Group();
+  group.position.y = LAMP_Y;
+  const rotor = new Group(); // الجزء الدوّار؛ المصدر في المركز لا يحتاج دوراناً
+  group.add(rotor);
+
+  const brass = new MeshStandardMaterial({ color: palette.orange, emissive: palette.orange, emissiveIntensity: 0.6, roughness: 0.4, metalness: 0.2 });
+  const prism = new MeshBasicMaterial({ map: prismTexture(), transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false });
+  const core = new MeshBasicMaterial({ color: '#ffffff', transparent: true, toneMapped: false });
+
+  const R = 0.2;
+  const H = 0.3;
+  const place = (mesh, y = 0) => { mesh.position.y = y; rotor.add(mesh); return mesh; };
+
+  // المصدر: نقطة ساطعة عند LAMP_Y تماماً، رأس مخروطي الحزمة
+  const source = new Mesh(new SphereGeometry(0.05, 16, 10), core);
+  source.renderOrder = 1.5;
+  group.add(source);
+
+  // جسم العدسة وقمتاها المستدقتان (شكل خلية النحل المعروف لعدسات Fresnel)
+  const drum = place(new Mesh(new CylinderGeometry(R, R, H, 32, 1, true), prism));
+  const top = place(new Mesh(new CylinderGeometry(R * 0.5, R, 0.07, 32, 1, true), prism), H / 2 + 0.035);
+  const bottom = place(new Mesh(new CylinderGeometry(R, R * 0.5, 0.07, 32, 1, true), prism), -H / 2 - 0.035);
+  // ترتيب الرسم: كلها بعد توهج المصباح (Sprite إضافي يُشبع مركز الغرفة بالأبيض) وإلا ذابت تفاصيلها فيه؛
+  // ثم من الخلف للأمام: العدسة البعيدة (1) ← المصدر (1.5) ← الجسم الزجاجي (2) ← العدسة القريبة (3)
+  [drum, top, bottom].forEach((m) => { m.renderOrder = 2; });
+
+  // الإطار النحاسي: حلقتان وأربعة قوائم بين العدستين
+  const ring = new TorusGeometry(R + 0.004, 0.015, 6, 40);
+  [H / 2, -H / 2].forEach((y) => { place(new Mesh(ring, brass), y).rotation.x = Math.PI / 2; });
+  const bar = new BoxGeometry(0.026, H, 0.026);
+  for (let i = 0; i < 4; i += 1) {
+    const a = Math.PI / 4 + (i * Math.PI) / 2;
+    const post = place(new Mesh(bar, brass));
+    post.position.set(Math.cos(a) * (R + 0.004), 0, Math.sin(a) * (R + 0.004));
+  }
+  place(new Mesh(new CylinderGeometry(R * 0.55, R * 0.55, 0.025, 24), brass), -H / 2 - 0.08);
+
+  // العدستان: كل واحدة على محور حزمتها (+x و -x) بإطار نحاسي
+  const lensTexture = bullseyeTexture();
+  const lensGeometry = new CircleGeometry(0.125, 32);
+  const rim = new TorusGeometry(0.125, 0.016, 6, 32);
+  const lenses = [1, -1].map((dir) => {
+    const material = new MeshBasicMaterial({ map: lensTexture, transparent: true, depthWrite: false, toneMapped: false });
+    const face = new Group();
+    face.position.x = dir * (R + 0.006);
+    face.rotation.y = dir * (Math.PI / 2); // وجه الدائرة (+z) نحو ±x
+    const lens = new Mesh(lensGeometry, material);
+    face.add(lens, new Mesh(rim, brass));
+    rotor.add(face);
+    return { lens, material, dir };
+  });
+
+  const toCamera = new Vector3();
+  return {
+    group,
+    // angle هي زاوية الحزمة نفسها؛ lamp شدة الاشتعال (0..1)
+    update(angle, lamp, cameraPosition) {
+      rotor.rotation.y = angle;
+      core.color.setRGB(lerp(0.55, 1.0, lamp), lerp(0.5, 0.94, lamp), lerp(0.62, 0.82, lamp));
+      prism.color.setRGB(lerp(0.5, 1.0, lamp), lerp(0.46, 0.9, lamp), lerp(0.62, 0.85, lamp));
+      // العدسة المواجهة للمشاهد تومض لحظة مرور حزمتها عليه، كما في المنارات الحقيقية
+      toCamera.set(cameraPosition.x, 0, cameraPosition.z).normalize();
+      const nx = Math.cos(angle);
+      const nz = -Math.sin(angle);
+      lenses.forEach(({ lens, material, dir }) => {
+        const toward = dir * (nx * toCamera.x + nz * toCamera.z);
+        lens.renderOrder = toward > 0 ? 3 : 1;
+        const facing = Math.max(0, toward);
+        const glow = lerp(0.45, 1.0, lamp) * (1 + 0.9 * lamp * facing ** 6);
+        material.color.setRGB(glow, glow * lerp(1, 0.9, lamp), glow * lerp(1, 0.78, lamp));
+      });
+    },
+  };
 }
 
 // حزمتا الضوء: مخروطان متقابلان بمادة إضافية تتلاشى مع المسافة وعند الحواف (إيحاء بحجم الضوء)
@@ -727,6 +873,8 @@ export function createHeroScene(container, { mirrored = false, reducedMotion = f
   const city = buildCity(rand, palette, sharedUniforms);
   const islet = buildIslet(rand, palette);
   const { group: lighthouse, glass } = buildLighthouse(palette);
+  const optic = buildOptic(palette);
+  lighthouse.add(optic.group);
   const { pivot: beams, material: beamMaterial } = buildBeams();
   const dust = buildDust(rand);
 
@@ -927,6 +1075,7 @@ export function createHeroScene(container, { mirrored = false, reducedMotion = f
     // الحزمة تدور بالزمن فقط وبالسرعة نفسها دائماً؛ التمرير لا يغيّر زاويتها
     const angle = reducedMotion ? sweepStart : sweepStart + sweep;
     beams.rotation.y = angle;
+    optic.update(angle, lamp, camera.position); // العدسة والحزمة جهاز واحد: الزاوية نفسها في كل إطار
     beams.scale.set(1 + OUTRO_BEAM.length * pull, 1 + OUTRO_BEAM.spread * pull, 1 + OUTRO_BEAM.spread * pull);
     beamMaterial.uniforms.uStrength.value = beamIn;
     sharedUniforms.uBeamAngle.value = angle;

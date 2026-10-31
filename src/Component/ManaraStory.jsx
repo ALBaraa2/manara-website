@@ -55,7 +55,7 @@ function Visual({ v, w, copy }) {
         <dt>{w(row.label)}</dt><dd>{w(row.text)}</dd>
       </div>)}</dl>;
     case 'statement':
-      return <p className="story-statement">{w(v.text)}</p>;
+      return <p className="story-statement">{v.dir ? <span dir={v.dir}>{w(v.text)}</span> : w(v.text)}</p>;
     case 'question':
       return <p className="story-question"><span>{w(v.text)}</span><span aria-hidden="true">↓</span></p>;
     default:

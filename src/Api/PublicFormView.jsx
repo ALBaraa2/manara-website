@@ -1,7 +1,7 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import axiosClient from './axiosClient';
-import { FiCheckCircle, FiAlertCircle } from 'react-icons/fi';
+import { FiCheckCircle, FiAlertCircle, FiArrowLeft, FiArrowRight, FiRefreshCw } from 'react-icons/fi';
 import { HiGlobeAlt } from 'react-icons/hi2';
 import { LanguageContext } from '../LanguageContext';
 import { localize } from '../lib/localize';
@@ -9,60 +9,128 @@ import { resolveMediaUrl } from '../lib/media';
 import { getValidationErrors } from '../lib/apiError';
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024; // SubmitFormRequest: PDF حتى 5 MB
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/; // نفس فحص نموذج التواصل؛ الـ backend يتحقق نهائياً
+// وجهة «رجوع» حين لا توجد صفحة سابقة داخل الموقع (فتح الرابط مباشرة أو في تبويب جديد): قائمة الورش
+const BACK_FALLBACK = '/#workshops';
 
 const copy = {
   AR: {
+    back: 'رجوع',
+    kicker: 'التسجيل في ورشة',
     loading: 'جاري تحميل النموذج...',
     notFound: 'عذراً، هذا النموذج غير موجود أو تم إيقافه.',
     loadFailed: 'تعذر تحميل النموذج، يرجى المحاولة لاحقاً.',
+    retry: 'إعادة المحاولة',
     untitled: 'نموذج تسجيل',
     untitledField: 'حقل بدون عنوان',
+    requiredNote: 'الحقول المشار إليها بـ * إلزامية.',
+    requiredSr: '(إلزامي)',
     choose: 'اختر من القائمة...',
     required: 'هذا الحقل مطلوب.',
     chooseOne: 'يرجى اختيار خيار واحد على الأقل.',
+    invalidEmail: 'اكتب بريداً إلكترونياً صحيحاً، مثل name@example.com.',
+    invalidNumber: 'يرجى إدخال رقم صحيح.',
+    invalidDate: 'يرجى إدخال تاريخ صحيح.',
+    invalidChoice: 'يرجى اختيار أحد الخيارات المتاحة.',
+    invalid: 'القيمة المدخلة غير صالحة.',
     pdfOnly: 'يرجى رفع ملف بصيغة PDF.',
     tooLarge: 'حجم الملف يجب ألا يتجاوز 5 ميجابايت.',
+    fileInvalid: 'يرجى رفع ملف PDF لا يتجاوز 5 ميجابايت.',
     fileHint: 'ملف PDF فقط، بحد أقصى 5 ميجابايت.',
     fixErrors: 'يرجى مراجعة الحقول المظللة باللون الأحمر.',
     throttled: 'محاولات كثيرة، يرجى الانتظار دقيقة ثم المحاولة مجدداً.',
     closed: 'هذا النموذج لم يعد يستقبل ردوداً.',
+    networkError: 'تعذر الاتصال بالخادم، تحقق من اتصالك ثم حاول مجدداً.',
     genericError: 'حدث خطأ أثناء إرسال الرد، يرجى المحاولة لاحقاً.',
     submitting: 'جاري الإرسال...',
-    submit: 'إرسال النموذج',
+    submit: 'إرسال التسجيل',
     successTitle: 'تم إرسال ردك بنجاح!',
     successText: 'شكراً لك على تعبئة النموذج، سيتم تحويلك إلى الصفحة الرئيسية...',
     home: 'العودة للرئيسية',
     noFields: 'لا توجد حقول في هذا النموذج حالياً.',
     switchLang: 'English',
+    site: 'منارة',
   },
   EN: {
+    back: 'Back',
+    kicker: 'Workshop registration',
     loading: 'Loading form...',
     notFound: 'Sorry, this form does not exist or is no longer active.',
     loadFailed: 'The form could not be loaded. Please try again later.',
+    retry: 'Try again',
     untitled: 'Registration form',
     untitledField: 'Untitled field',
+    requiredNote: 'Fields marked with * are required.',
+    requiredSr: '(required)',
     choose: 'Choose from the list...',
     required: 'This field is required.',
     chooseOne: 'Please choose at least one option.',
+    invalidEmail: 'Enter a valid email, e.g. name@example.com.',
+    invalidNumber: 'Please enter a valid number.',
+    invalidDate: 'Please enter a valid date.',
+    invalidChoice: 'Please choose one of the available options.',
+    invalid: 'The value entered is not valid.',
     pdfOnly: 'Please upload a PDF file.',
     tooLarge: 'The file must be 5 MB or smaller.',
+    fileInvalid: 'Please upload a PDF file of 5 MB or smaller.',
     fileHint: 'PDF only, up to 5 MB.',
     fixErrors: 'Please review the fields highlighted in red.',
     throttled: 'Too many attempts. Please wait a minute and try again.',
     closed: 'This form is no longer accepting responses.',
+    networkError: 'Could not reach the server. Check your connection and try again.',
     genericError: 'Something went wrong while submitting. Please try again later.',
     submitting: 'Submitting...',
-    submit: 'Submit',
+    submit: 'Submit registration',
     successTitle: 'Your response was submitted!',
     successText: 'Thank you for filling out the form. Redirecting you to the home page...',
     home: 'Back to home',
     noFields: 'This form has no fields yet.',
     switchLang: 'العربية',
+    site: 'Manara',
   },
 };
 
 const isEmptyAnswer = (value) =>
   value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0);
+
+// رسالة خطأ الخادم (422) بلغة الصفحة حسب نوع الحقل، بدلاً من نص Laravel الإنجليزي
+const serverMessage = (field, value, text) => {
+  if (isEmptyAnswer(value)) return field?.type === 'checkbox' ? text.chooseOne : text.required;
+  switch (field?.type) {
+    case 'email': return text.invalidEmail;
+    case 'number': return text.invalidNumber;
+    case 'date': return text.invalidDate;
+    case 'file': return text.fileInvalid;
+    case 'select':
+    case 'radio':
+    case 'checkbox': return text.invalidChoice;
+    default: return text.invalid;
+  }
+};
+
+// «رجوع»: إلى الصفحة السابقة فعلاً إن جاء الزائر من داخل الموقع (React Router يحفظ ترتيب الصفحة في history.state.idx)،
+// وإلا إلى قائمة الورش. الرابط حقيقي، فيعمل الفتح في تبويب جديد أيضاً.
+function BackLink({ text, isAr }) {
+  const navigate = useNavigate();
+  const Icon = isAr ? FiArrowRight : FiArrowLeft;
+  const handleClick = (e) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    if ((window.history.state?.idx ?? 0) > 0) {
+      e.preventDefault();
+      navigate(-1);
+    }
+  };
+  return (
+    <Link
+      to={BACK_FALLBACK}
+      onClick={handleClick}
+      className="inline-flex items-center gap-2 h-10 ps-3 pe-4 rounded-full text-sm font-semibold text-brand-purple bg-white border border-brand-purple/10 hover:border-brand-purple/30 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange"
+    >
+      <Icon aria-hidden="true" className="text-base" />
+      {text.back}
+    </Link>
+  );
+}
 
 const PublicFormView = () => {
   const { slug } = useParams();
@@ -78,9 +146,10 @@ const PublicFormView = () => {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const sending = useRef(false); // يمنع الإرسال المكرر بالنقر السريع قبل إعادة الرسم
 
   // GET /forms/{slug} — النماذج غير المنشورة تعيد 404
-  useEffect(() => {
+  const load = useCallback(() => {
     let cancelled = false;
     setLoadStatus('loading');
 
@@ -99,12 +168,22 @@ const PublicFormView = () => {
     };
   }, [slug]);
 
+  useEffect(() => load(), [load]);
+
   // العودة للصفحة الرئيسية بعد 4 ثوانٍ من النجاح
   useEffect(() => {
     if (!submitted) return undefined;
     const timer = setTimeout(() => navigate('/'), 4000);
     return () => clearTimeout(timer);
   }, [submitted, navigate]);
+
+  const formTitle = form ? localize(form.title, lang, text.untitled) : '';
+  useEffect(() => {
+    if (formTitle) document.title = `${formTitle} | ${text.site}`;
+    return () => {
+      document.title = 'منارة';
+    };
+  }, [formTitle, text.site]);
 
   const fields = [...(form?.fields || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
@@ -132,28 +211,44 @@ const PublicFormView = () => {
     setAnswer(field.id, file || null);
   };
 
-  // المتصفح لا يتحقق من مجموعات checkbox المطلوبة، لذا نتحقق منها هنا (والـ backend يتحقق من الكل)
+  // التحقق في المتصفح بلغة الصفحة (بدل رسائل المتصفح الافتراضية)؛ الـ backend يبقى المرجع النهائي
   const validateClientSide = () => {
     const errors = {};
     fields.forEach((field) => {
-      if (Boolean(field.is_required) && field.type === 'checkbox' && isEmptyAnswer(answers[field.id])) {
-        errors[field.id] = text.chooseOne;
+      const value = answers[field.id];
+      if (Boolean(field.is_required) && isEmptyAnswer(value)) {
+        errors[field.id] = field.type === 'checkbox' ? text.chooseOne : text.required;
+      } else if (field.type === 'email' && !isEmptyAnswer(value) && !EMAIL.test(String(value).trim())) {
+        errors[field.id] = text.invalidEmail;
       }
     });
     return errors;
   };
 
+  // نقل التركيز إلى أول حقل فيه خطأ (بترتيب الحقول) حتى يراه الزائر على الهاتف أيضاً
+  const focusFirstError = (errors) => {
+    const first = fields.find((field) => errors[field.id]);
+    if (!first) return;
+    const el = document.getElementById(`field-${first.id}`) || document.querySelector(`[name="field-${first.id}"]`);
+    el?.focus({ preventScroll: true });
+    el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (sending.current) return;
     setErrorMessage('');
 
+    // أخطاء الملفات (الصيغة والحجم) تُحدَّد عند الاختيار وتبقى أولى من «مطلوب»
     const clientErrors = { ...validateClientSide(), ...Object.fromEntries(Object.entries(fieldErrors).filter(([, msg]) => msg)) };
     if (Object.keys(clientErrors).length > 0) {
       setFieldErrors(clientErrors);
       setErrorMessage(text.fixErrors);
+      focusFirstError(clientErrors);
       return;
     }
 
+    sending.current = true;
     setSubmitting(true);
 
     try {
@@ -175,266 +270,300 @@ const PublicFormView = () => {
       if (status === 422) {
         // أخطاء Laravel بالشكل answers.{fieldId} أو answers.{fieldId}.{index}
         const serverErrors = {};
-        Object.entries(getValidationErrors(error)).forEach(([key, messages]) => {
+        Object.keys(getValidationErrors(error)).forEach((key) => {
           const match = key.match(/^answers\.(\d+)/);
           if (match && !serverErrors[match[1]]) {
-            serverErrors[match[1]] = isEmptyAnswer(answers[match[1]]) ? text.required : messages[0];
+            const field = fields.find((f) => String(f.id) === match[1]);
+            serverErrors[match[1]] = serverMessage(field, answers[match[1]], text);
           }
         });
         setFieldErrors(serverErrors);
         setErrorMessage(text.fixErrors);
+        focusFirstError(serverErrors);
       } else if (status === 429) {
         setErrorMessage(text.throttled);
       } else if (status === 403 || status === 404) {
         setErrorMessage(text.closed);
+      } else if (!error.response) {
+        setErrorMessage(text.networkError);
       } else {
         setErrorMessage(text.genericError);
       }
     } finally {
+      sending.current = false;
       setSubmitting(false);
     }
   };
 
   const pageDir = isAr ? 'rtl' : 'ltr';
 
-  const langToggle = (
-    <button
-      type="button"
-      onClick={setLang}
-      lang={isAr ? 'en' : 'ar'}
-      className="inline-flex items-center gap-2 text-xs font-medium text-gray-600 border border-gray-200 bg-white px-3 py-1.5 rounded-lg hover:border-brand-orange hover:text-brand-orange-dark transition"
-    >
-      <HiGlobeAlt aria-hidden="true" />
-      {text.switchLang}
-    </button>
+  // الشريط العلوي: رجوع، الشعار، تبديل اللغة — يبقى ظاهراً في كل حالات الصفحة
+  const topBar = (
+    <div className="max-w-2xl mx-auto grid grid-cols-[1fr_auto_1fr] items-center gap-3 mb-6">
+      <div className="justify-self-start"><BackLink text={text} isAr={isAr} /></div>
+      <Link to="/" aria-label={isAr ? 'منارة - الرئيسية' : 'Manara - Home'} className="justify-self-center rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange">
+        <img src="/transparent BG.svg" alt={text.site} className="h-9 sm:h-10 w-auto" />
+      </Link>
+      <button
+        type="button"
+        onClick={setLang}
+        lang={isAr ? 'en' : 'ar'}
+        className="justify-self-end inline-flex items-center gap-2 h-10 px-3 rounded-full text-sm font-medium text-brand-purple bg-white border border-brand-purple/10 hover:border-brand-purple/30 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange"
+      >
+        <HiGlobeAlt aria-hidden="true" />
+        {text.switchLang}
+      </button>
+    </div>
+  );
+
+  const cardClass = 'max-w-2xl mx-auto bg-white border border-brand-purple/10 rounded-3xl shadow-[0_30px_60px_-40px_rgb(49_35_100/0.35)] overflow-hidden';
+
+  const page = (children) => (
+    <div className="min-h-screen bg-brand-tint text-gray-800 py-5 sm:py-8 px-4 sm:px-6" dir={pageDir}>
+      {topBar}
+      {children}
+    </div>
   );
 
   if (loadStatus === 'loading') {
-    return (
-      <div className="flex justify-center items-center min-h-screen bg-brand-tint text-gray-500 text-sm" dir={pageDir}>
-        <div className="animate-pulse flex gap-2 items-center" role="status">
-          <div className="w-3 h-3 bg-brand-orange rounded-full"></div>
-          <div className="w-3 h-3 bg-brand-orange rounded-full"></div>
-          <div className="w-3 h-3 bg-brand-orange rounded-full"></div>
-          <span className="ms-3 font-medium">{text.loading}</span>
+    return page(
+      <div className={`${cardClass} p-6 sm:p-10`} aria-busy="true">
+        <span className="sr-only" role="status">{text.loading}</span>
+        <div aria-hidden="true" className="animate-pulse space-y-6">
+          <div className="h-4 w-32 rounded-full bg-brand-tint" />
+          <div className="h-8 w-3/4 rounded-xl bg-brand-tint" />
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="space-y-2">
+              <div className="h-4 w-24 rounded-full bg-brand-tint" />
+              <div className="h-12 rounded-xl bg-brand-tint" />
+            </div>
+          ))}
         </div>
       </div>
     );
   }
 
   if (loadStatus !== 'ready') {
-    return (
-      <div className="flex flex-col justify-center items-center min-h-screen bg-brand-tint text-gray-700 p-4" dir={pageDir}>
-        <div className="bg-white border border-gray-100 p-8 rounded-2xl text-center max-w-md w-full space-y-4 shadow-xl shadow-brand-purple/5">
-          <FiAlertCircle className="text-red-500 text-5xl mx-auto" aria-hidden="true" />
-          <p className="text-red-600 text-sm font-semibold">{loadStatus === 'not-found' ? text.notFound : text.loadFailed}</p>
-          <Link to="/" className="inline-block text-sm font-semibold text-brand-orange-dark hover:underline">{text.home}</Link>
+    return page(
+      <div className={`${cardClass} p-8 sm:p-10 text-center space-y-4`} role="alert">
+        <FiAlertCircle className="text-red-500 text-5xl mx-auto" aria-hidden="true" />
+        <p className="text-gray-700 font-semibold">{loadStatus === 'not-found' ? text.notFound : text.loadFailed}</p>
+        <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+          {loadStatus === 'error' && (
+            <button type="button" onClick={load} className="inline-flex items-center gap-2 h-11 px-5 rounded-full font-bold text-white bg-brand-orange hover:bg-brand-orange-dark transition-colors focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-orange/30">
+              <FiRefreshCw aria-hidden="true" />{text.retry}
+            </button>
+          )}
+          <Link to="/" className="inline-flex items-center h-11 px-5 rounded-full font-bold text-brand-purple border border-brand-purple/20 hover:bg-brand-tint transition-colors">{text.home}</Link>
         </div>
       </div>
     );
   }
 
   if (submitted) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-brand-tint text-gray-800 p-4" dir={pageDir}>
-        <div role="status" className="bg-white p-8 rounded-2xl border border-gray-100 text-center max-w-md w-full shadow-xl shadow-brand-purple/5 space-y-4">
-          <FiCheckCircle className="text-green-500 text-5xl mx-auto" aria-hidden="true" />
-          <h1 className="text-xl font-bold text-brand-purple">{text.successTitle}</h1>
-          <p className="text-sm text-gray-600">{text.successText}</p>
-          <Link to="/" className="inline-block text-sm font-semibold text-brand-orange-dark hover:underline">{text.home}</Link>
-        </div>
+    return page(
+      <div className={`${cardClass} p-8 sm:p-12 text-center space-y-4`} role="status">
+        <FiCheckCircle className="text-green-500 text-5xl mx-auto" aria-hidden="true" />
+        <h1 className="text-xl sm:text-2xl font-bold text-brand-purple">{text.successTitle}</h1>
+        <p className="text-gray-600 leading-7">{text.successText}</p>
+        <Link to="/" className="inline-flex items-center h-11 px-6 mt-2 rounded-full font-bold text-white bg-brand-orange hover:bg-brand-orange-dark transition-colors">{text.home}</Link>
       </div>
     );
   }
 
   const coverUrl = resolveMediaUrl(form.image);
   const description = localize(form.description, lang);
+  const hasRequired = fields.some((field) => Boolean(field.is_required));
   const inputClass = (hasError) =>
-    `w-full bg-white border rounded-xl p-3 text-sm sm:text-base text-gray-800 focus:outline-none focus:ring-2 transition-all shadow-sm ${hasError ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : 'border-gray-200 focus:border-brand-orange focus:ring-brand-orange/20'}`;
+    `w-full rounded-xl px-4 py-3 text-base text-gray-800 border-[1.5px] outline-none transition-colors ${hasError ? 'bg-white border-red-400 focus:ring-4 focus:ring-red-100' : 'bg-brand-tint border-transparent focus:bg-white focus:border-brand-orange focus:ring-4 focus:ring-brand-orange/15'}`;
 
-  return (
-    <div className="min-h-screen bg-brand-tint text-gray-800 py-6 px-4 sm:px-6 text-sm sm:text-base" dir={pageDir}>
-      <div className="max-w-4xl mx-auto flex justify-between items-center mb-4">
-        <Link to="/" aria-label={isAr ? 'منارة - الرئيسية' : 'Manara - Home'}>
-          <img src="/transparent BG.svg" alt={isAr ? 'منارة' : 'Manara'} className="h-10 w-auto" />
-        </Link>
-        {langToggle}
-      </div>
+  return page(
+    <main className={cardClass}>
+      {coverUrl && (
+        <div className="w-full h-40 sm:h-52 bg-brand-tint">
+          <img src={coverUrl} alt="" className="w-full h-full object-cover" />
+        </div>
+      )}
 
-      <div className="max-w-4xl mx-auto bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-xl shadow-brand-purple/5">
-
-        {coverUrl && (
-          <div className="w-full h-56 sm:h-72 overflow-hidden border-b border-gray-100 bg-gray-50">
-            <img src={coverUrl} alt="" className="w-full h-full object-cover" />
-          </div>
-        )}
-
-        <div className="p-6 sm:p-10">
-          <h1 className="text-2xl sm:text-3xl font-bold text-brand-purple mb-3" dir="auto">
-            {localize(form.title, lang, text.untitled)}
-          </h1>
+      <div className="p-6 sm:p-10">
+        <header className="pb-6 mb-8 border-b border-brand-purple/10">
+          <p className="text-sm font-bold text-brand-orange-dark">{text.kicker}</p>
+          <h1 className="mt-2 text-2xl sm:text-3xl font-bold text-brand-purple leading-snug" dir="auto">{formTitle}</h1>
           {description && (
-            <p className="text-sm sm:text-base text-gray-600 mb-8 pb-4 border-b border-gray-100 leading-relaxed whitespace-pre-line" dir="auto">
-              {description}
-            </p>
+            <p className="mt-3 text-gray-600 leading-7 whitespace-pre-line" dir="auto">{description}</p>
+          )}
+          {hasRequired && <p className="mt-4 text-xs text-gray-500">{text.requiredNote}</p>}
+        </header>
+
+        <form onSubmit={handleSubmit} noValidate aria-busy={submitting}>
+          {fields.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-10">{text.noFields}</p>
+          ) : (
+            <div className="space-y-7">
+              {fields.map((field) => {
+                const fieldId = field.id;
+                // is_required قد يصل كـ 0/1 حسب قاعدة البيانات، لذا نحوله لقيمة منطقية
+                const isRequired = Boolean(field.is_required);
+                const inputId = `field-${fieldId}`;
+                const errorId = `${inputId}-error`;
+                const fieldError = fieldErrors[fieldId];
+                const fieldLabel = localize(field.label, lang, text.untitledField);
+                const options = Array.isArray(field.options) ? field.options : [];
+                const isGroup = field.type === 'checkbox' || field.type === 'radio';
+                const describedBy = [fieldError ? errorId : null, field.type === 'file' ? `${inputId}-hint` : null].filter(Boolean).join(' ') || undefined;
+
+                const labelContent = (
+                  <>
+                    {fieldLabel}
+                    {isRequired && <><span className="text-brand-orange-dark ms-1" aria-hidden="true">*</span><span className="sr-only"> {text.requiredSr}</span></>}
+                  </>
+                );
+                const labelClass = 'block mb-2 text-sm sm:text-base font-bold text-brand-purple';
+
+                return (
+                  <div key={fieldId}>
+                    {isGroup ? (
+                      <span id={`${inputId}-label`} className={labelClass} dir="auto">{labelContent}</span>
+                    ) : (
+                      <label htmlFor={inputId} className={labelClass} dir="auto">{labelContent}</label>
+                    )}
+
+                    {['text', 'email', 'number', 'date'].includes(field.type) && (
+                      <input
+                        id={inputId}
+                        type={field.type}
+                        required={isRequired}
+                        autoComplete={field.type === 'email' ? 'email' : undefined}
+                        inputMode={field.type === 'email' ? 'email' : field.type === 'number' ? 'decimal' : undefined}
+                        aria-invalid={Boolean(fieldError)}
+                        aria-describedby={describedBy}
+                        dir={field.type === 'email' || field.type === 'number' ? 'ltr' : 'auto'}
+                        value={answers[fieldId] || ''}
+                        onChange={(e) => setAnswer(fieldId, e.target.value)}
+                        className={`${inputClass(fieldError)} ${isAr && (field.type === 'email' || field.type === 'number') ? 'text-right' : ''}`}
+                      />
+                    )}
+
+                    {field.type === 'textarea' && (
+                      <textarea
+                        id={inputId}
+                        required={isRequired}
+                        aria-invalid={Boolean(fieldError)}
+                        aria-describedby={describedBy}
+                        rows="4"
+                        dir="auto"
+                        value={answers[fieldId] || ''}
+                        onChange={(e) => setAnswer(fieldId, e.target.value)}
+                        className={`${inputClass(fieldError)} resize-y`}
+                      />
+                    )}
+
+                    {/* قيمة الخيار المرسلة هي النص العربي الأصلي (الذي يتحقق منه الـ backend)، والمعروض حسب اللغة */}
+                    {field.type === 'select' && (
+                      <select
+                        id={inputId}
+                        required={isRequired}
+                        aria-invalid={Boolean(fieldError)}
+                        aria-describedby={describedBy}
+                        value={answers[fieldId] || ''}
+                        onChange={(e) => setAnswer(fieldId, e.target.value)}
+                        className={`${inputClass(fieldError)} cursor-pointer`}
+                      >
+                        <option value="" disabled>{text.choose}</option>
+                        {options.map((opt, optIndex) => (
+                          <option key={optIndex} value={localize(opt, 'AR')}>{localize(opt, lang)}</option>
+                        ))}
+                      </select>
+                    )}
+
+                    {isGroup && (
+                      <div
+                        role={field.type === 'radio' ? 'radiogroup' : 'group'}
+                        aria-labelledby={`${inputId}-label`}
+                        aria-describedby={describedBy}
+                        aria-invalid={field.type === 'radio' ? Boolean(fieldError) : undefined}
+                        className="grid gap-2 sm:grid-cols-2"
+                      >
+                        {options.map((opt, optIndex) => {
+                          const value = localize(opt, 'AR');
+                          const current = answers[fieldId];
+                          const checked = field.type === 'checkbox'
+                            ? Array.isArray(current) && current.includes(value)
+                            : current === value;
+
+                          return (
+                            <label
+                              key={optIndex}
+                              className={`flex items-center gap-3 min-h-12 px-4 py-2.5 rounded-xl border-[1.5px] cursor-pointer transition-colors has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-brand-orange/15 ${checked ? 'border-brand-orange bg-brand-orange/5' : fieldError ? 'border-red-300 bg-white' : 'border-brand-purple/10 bg-white hover:border-brand-purple/30'}`}
+                            >
+                              <input
+                                type={field.type}
+                                name={inputId}
+                                value={value}
+                                required={field.type === 'radio' && isRequired}
+                                checked={checked}
+                                onChange={(e) => {
+                                  if (field.type === 'radio') {
+                                    setAnswer(fieldId, e.target.value);
+                                    return;
+                                  }
+                                  const currentValues = Array.isArray(current) ? current : [];
+                                  setAnswer(fieldId, e.target.checked ? [...currentValues, value] : currentValues.filter((v) => v !== value));
+                                }}
+                                className="w-5 h-5 shrink-0 accent-brand-orange cursor-pointer focus:outline-none"
+                              />
+                              <span className="text-gray-700 font-medium" dir="auto">{localize(opt, lang)}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {field.type === 'file' && (
+                      <>
+                        <input
+                          id={inputId}
+                          type="file"
+                          accept="application/pdf,.pdf"
+                          required={isRequired}
+                          aria-invalid={Boolean(fieldError)}
+                          aria-describedby={describedBy}
+                          onChange={(e) => handleFileChange(field, e.target.files[0])}
+                          className={`w-full rounded-xl p-2 text-sm text-gray-600 border-[1.5px] border-dashed ${fieldError ? 'border-red-400' : 'border-brand-purple/20'} file:me-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-brand-purple file:text-white hover:file:bg-brand-purple-dark file:cursor-pointer cursor-pointer focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-orange/15`}
+                        />
+                        <p id={`${inputId}-hint`} className="mt-2 text-xs text-gray-500">{text.fileHint}</p>
+                      </>
+                    )}
+
+                    {fieldError && (
+                      <p id={errorId} className="mt-2 flex items-center gap-1.5 text-sm font-medium text-red-600">
+                        <FiAlertCircle aria-hidden="true" className="shrink-0" />{fieldError}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
 
           {errorMessage && (
-            <div role="alert" className="p-4 mb-6 rounded-xl bg-red-50 border border-red-100 text-red-600 text-sm flex items-center gap-3 font-medium">
+            <div role="alert" className="mt-8 p-4 rounded-xl bg-red-50 border border-red-100 text-red-700 text-sm flex items-center gap-3 font-medium">
               <FiAlertCircle className="text-lg shrink-0" aria-hidden="true" />
               <span>{errorMessage}</span>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {fields.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-10">{text.noFields}</p>
-            ) : (
-              <div className="space-y-6">
-                {fields.map((field) => {
-                  const fieldId = field.id;
-                  // is_required قد يصل كـ 0/1 حسب قاعدة البيانات، لذا نحوله لقيمة منطقية
-                  const isRequired = Boolean(field.is_required);
-                  const inputId = `field-${fieldId}`;
-                  const errorId = `${inputId}-error`;
-                  const fieldError = fieldErrors[fieldId];
-                  const fieldLabel = localize(field.label, lang, text.untitledField);
-                  const options = Array.isArray(field.options) ? field.options : [];
-                  const isGroup = field.type === 'checkbox' || field.type === 'radio';
-                  const describedBy = [fieldError ? errorId : null, field.type === 'file' ? `${inputId}-hint` : null].filter(Boolean).join(' ') || undefined;
-
-                  const labelContent = (
-                    <>
-                      {fieldLabel} {isRequired && <span className="text-brand-orange-dark ms-1" aria-hidden="true">*</span>}
-                    </>
-                  );
-
-                  return (
-                    <div key={fieldId} className={`space-y-2.5 p-5 rounded-2xl border transition-all shadow-sm ${fieldError ? 'bg-red-50/40 border-red-200' : 'bg-brand-tint/70 border-brand-purple/10 hover:bg-brand-tint'}`}>
-                      {isGroup ? (
-                        <span id={`${inputId}-label`} className="block text-sm sm:text-base font-bold text-brand-purple">{labelContent}</span>
-                      ) : (
-                        <label htmlFor={inputId} className="block text-sm sm:text-base font-bold text-brand-purple">{labelContent}</label>
-                      )}
-
-                      {['text', 'email', 'number', 'date'].includes(field.type) && (
-                        <input
-                          id={inputId}
-                          type={field.type}
-                          required={isRequired}
-                          aria-invalid={Boolean(fieldError)}
-                          aria-describedby={describedBy}
-                          dir={field.type === 'email' || field.type === 'number' ? 'ltr' : 'auto'}
-                          value={answers[fieldId] || ''}
-                          onChange={(e) => setAnswer(fieldId, e.target.value)}
-                          className={inputClass(fieldError)}
-                        />
-                      )}
-
-                      {field.type === 'textarea' && (
-                        <textarea
-                          id={inputId}
-                          required={isRequired}
-                          aria-invalid={Boolean(fieldError)}
-                          aria-describedby={describedBy}
-                          rows="4"
-                          dir="auto"
-                          value={answers[fieldId] || ''}
-                          onChange={(e) => setAnswer(fieldId, e.target.value)}
-                          className={`${inputClass(fieldError)} resize-y`}
-                        />
-                      )}
-
-                      {/* قيمة الخيار المرسلة هي النص العربي الأصلي (الذي يتحقق منه الـ backend)، والمعروض حسب اللغة */}
-                      {field.type === 'select' && (
-                        <select
-                          id={inputId}
-                          required={isRequired}
-                          aria-invalid={Boolean(fieldError)}
-                          aria-describedby={describedBy}
-                          value={answers[fieldId] || ''}
-                          onChange={(e) => setAnswer(fieldId, e.target.value)}
-                          className={inputClass(fieldError)}
-                        >
-                          <option value="" disabled>{text.choose}</option>
-                          {options.map((opt, optIndex) => (
-                            <option key={optIndex} value={localize(opt, 'AR')}>{localize(opt, lang)}</option>
-                          ))}
-                        </select>
-                      )}
-
-                      {isGroup && (
-                        <div role={field.type === 'radio' ? 'radiogroup' : 'group'} aria-labelledby={`${inputId}-label`} aria-describedby={describedBy} className="space-y-3 pt-2">
-                          {options.map((opt, optIndex) => {
-                            const value = localize(opt, 'AR');
-                            const current = answers[fieldId];
-                            const checked = field.type === 'checkbox'
-                              ? Array.isArray(current) && current.includes(value)
-                              : current === value;
-
-                            return (
-                              <label key={optIndex} className="flex items-center gap-3 text-sm sm:text-base text-gray-700 cursor-pointer">
-                                <input
-                                  type={field.type}
-                                  name={inputId}
-                                  value={value}
-                                  required={field.type === 'radio' && isRequired}
-                                  checked={checked}
-                                  onChange={(e) => {
-                                    if (field.type === 'radio') {
-                                      setAnswer(fieldId, e.target.value);
-                                      return;
-                                    }
-                                    const currentValues = Array.isArray(current) ? current : [];
-                                    setAnswer(fieldId, e.target.checked ? [...currentValues, value] : currentValues.filter((v) => v !== value));
-                                  }}
-                                  className="w-5 h-5 border-gray-300 text-brand-orange focus:ring-brand-orange accent-brand-orange"
-                                />
-                                <span className="font-medium">{localize(opt, lang)}</span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {field.type === 'file' && (
-                        <>
-                          <input
-                            id={inputId}
-                            type="file"
-                            accept="application/pdf,.pdf"
-                            required={isRequired}
-                            aria-invalid={Boolean(fieldError)}
-                            aria-describedby={describedBy}
-                            onChange={(e) => handleFileChange(field, e.target.files[0])}
-                            className="w-full text-sm text-gray-600 file:me-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-brand-purple file:text-white hover:file:bg-brand-purple-dark cursor-pointer transition-all"
-                          />
-                          <p id={`${inputId}-hint`} className="text-xs text-gray-500">{text.fileHint}</p>
-                        </>
-                      )}
-
-                      {fieldError && (
-                        <p id={errorId} className="text-xs font-medium text-red-600">{fieldError}</p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <div className="flex justify-end pt-6 border-t border-gray-100 mt-8">
-              <button
-                type="submit"
-                disabled={submitting || fields.length === 0}
-                className="w-full sm:w-auto bg-brand-orange text-white px-8 py-3 rounded-xl font-bold hover:bg-brand-orange-dark shadow-lg shadow-brand-orange/25 hover:shadow-brand-orange/40 transition-all duration-300 flex items-center justify-center disabled:opacity-50 text-sm sm:text-base cursor-pointer focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-orange/30"
-              >
-                {submitting ? text.submitting : text.submit}
-              </button>
-            </div>
-          </form>
-        </div>
+          <button
+            type="submit"
+            disabled={submitting || fields.length === 0}
+            className="mt-8 w-full inline-flex items-center justify-center gap-2 h-12 px-8 rounded-full font-bold text-white bg-brand-orange hover:bg-brand-orange-dark shadow-lg shadow-brand-orange/20 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-orange/30"
+          >
+            {submitting && <span aria-hidden="true" className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />}
+            {submitting ? text.submitting : text.submit}
+          </button>
+        </form>
       </div>
-    </div>
+    </main>
   );
 };
 

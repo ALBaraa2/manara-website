@@ -20,7 +20,7 @@ export default defineConfig({
       // طلبات الـ API والملفات تُخدم من Laravel على نفس الأصل؛ بدون هذا الاستثناء
       // كان الـ service worker يعيد index.html عند فتح روابط الملفات أو CSV في تبويب جديد
       workbox: {
-        navigateFallbackDenylist: [/^\/api\//, /^\/storage\//, /^\/sanctum\//],
+        navigateFallbackDenylist: [/^\/api\//, /^\/storage\//, /^\/sanctum\//, /^\/media\//],
       },
 
       manifest: {

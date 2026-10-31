@@ -4,7 +4,8 @@ import { LanguageContext } from '../LanguageContext';
 import { HiMenu, HiX } from 'react-icons/hi';
 import SectionLink from './SectionLink';
 
-const SECTION_IDS = ['home', 'workshops', 'services', 'stories', 'posts'];
+// activities و contact يُتتبَّعان دون رابط في القائمة: عند الوصول إليهما لا يبقى الرابط السابق مميَّزاً
+const SECTION_IDS = ['home', 'workshops', 'services', 'activities', 'stories', 'posts', 'contact'];
 
 // خارج الرئيسية: الرابط النشط يُستنتج من المسار (صفحة مقال ← المنشورات، صفحة تسجيل ورشة ← ورش العمل)
 const sectionForRoute = (pathname) => {
